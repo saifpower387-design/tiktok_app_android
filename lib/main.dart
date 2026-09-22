@@ -5,13 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp();
   runApp(const TikTokCloneApp());
 }
 
@@ -558,7 +555,7 @@ class ProfileScreen extends StatelessWidget {
           children: [
             const CircleAvatar(radius: 40, child: Icon(Icons.person, size: 40)),
             const SizedBox(height: 10),
-            Text('@${FirebaseAuth.instance.currentUser?.email?.split('@')[0]}', style: const TextStyle(fontSize: 18)),
+            Text('@${FirebaseAuth.instance.currentUser?.email?.split('@')[0] ?? 'user'}', style: const TextStyle(fontSize: 18)),
             const SizedBox(height: 20),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent),
