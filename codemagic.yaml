@@ -5,6 +5,9 @@ workflows:
     environment:
       flutter: stable
     scripts:
+      - name: Create android folder if missing
+        script: |
+          flutter create . --platforms=android
       - name: Get flutter packages
         script: |
           flutter pub get
