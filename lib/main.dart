@@ -8,7 +8,11 @@ import 'dart:io';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase Init Error: $e');
+  }
   runApp(const TikTokCloneApp());
 }
 
@@ -36,7 +40,17 @@ class TikTokCloneApp extends StatelessWidget {
             }
           }
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator(color: Colors.redAccent)),
+            backgroundColor: Colors.black,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.tiktok, size: 80, color: Colors.redAccent),
+                  SizedBox(height: 20),
+                  CircularProgressIndicator(color: Colors.redAccent),
+                ],
+              ),
+            ),
           );
         },
       ),
@@ -82,7 +96,7 @@ class _AuthScreenState extends State<AuthScreen> {
         SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -232,6 +246,9 @@ class VideoFeedScreen extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('videos').orderBy('createdAt', descending: true).snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('خطأ في الاتصال بقاعدة البيانات: ${snapshot.error}', style: const TextStyle(color: Colors.white70)));
+        }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
         }
@@ -340,7 +357,9 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
     final pickedFile = await picker.pickVideo(source: ImageSource.gallery);
     if (pickedFile != null) {
       setState(() => _selectedVideoFile = File(pickedFile.path));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم اختيار الفيديو بنجاح! 🎬'), backgroundColor: Colors.green));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم اختيار الفيديو بنجاح! 🎬'), backgroundColor: Colors.green));
+      }
     }
   }
 
@@ -365,12 +384,16 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
         'createdAt': Timestamp.now(),
       });
 
-      setState(() => _isUploading = false);
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم النشر بنجاح لكل المستخدمين! 🚀'), backgroundColor: Colors.green));
+      if (mounted) {
+        setState(() => _isUploading = false);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم النشر بنجاح لكل المستخدمين! 🚀'), backgroundColor: Colors.green));
+      }
     } catch (e) {
-      setState(() => _isUploading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -648,11 +671,12 @@ class DiscoverScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const int crossAxisCount = 2;
     return Scaffold(
       appBar: AppBar(title: const Text('اكتشف الترندات')),
       body: GridView.builder(
         padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: crossAxisCount, crossAxisSpacing: 10, mainAxisSpacing: 10),
         itemCount: 4,
         itemBuilder: (context, index) => Container(color: Colors.grey[850], child: Center(child: Text('#هاشتاج_${index + 1}', style: const TextStyle(color: Colors.white)))),
       ),
