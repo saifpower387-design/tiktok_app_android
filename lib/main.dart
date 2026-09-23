@@ -169,7 +169,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const VideoFeedScreen(),
     const DiscoverScreen(),
-    const FullCameraStudioScreen(), // استوديو الكاميرا الحقيقي للتصوير المباشر
+    const FullCameraStudioScreen(),
     const InboxScreen(),
     const ProfileScreen(),
   ];
@@ -326,7 +326,7 @@ class VideoFeedScreen extends StatelessWidget {
   }
 }
 
-// 4. استوديو الكاميرا الحقيقي (لتصوير فيديو جديد بالكاميرا مباشرة)
+// 4. استوديو الكاميرا الحقيقي
 class FullCameraStudioScreen extends StatelessWidget {
   const FullCameraStudioScreen({super.key});
 
@@ -361,7 +361,6 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
 
   Future<void> _recordVideoWithCamera() async {
     final picker = ImagePicker();
-    // فتح كاميرا الهاتف لتسجيل فيديو فعلي
     final pickedFile = await picker.pickVideo(source: ImageSource.camera);
     if (pickedFile != null) {
       setState(() => _recordedVideoFile = File(pickedFile.path));
@@ -532,7 +531,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     decoration: const InputDecoration(
                       hintText: 'اكتب رسالة...',
                       filled: true,
-                      fillColor: Colors.grey,
+                      fillColor: Colors.black26,
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -550,7 +549,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 }
 
-// 6. صفحة الملف الشخصي وتسجيل الخروج وحفظ الحساب
+// 6. صفحة الملف الشخصي وتسجيل الخروج
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
@@ -565,7 +564,7 @@ class ProfileScreen extends StatelessWidget {
             icon: const Icon(Icons.logout, color: Colors.red),
             tooltip: 'تسجيل الخروج',
             onPressed: () {
-              AppSession.isLoggedIn = false; // تصفير حالة الدخول عند تسجيل الخروج يدوياً
+              AppSession.isLoggedIn = false;
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const AuthScreen()),
@@ -680,9 +679,25 @@ class DiscoverScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('اكتشف الترندات')),
       body: GridView.builder(
         padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: crossAxisCount, crossAxisSpacing: 10, mainAxisSpacing: 10),
-        itemCount: 4,
-        itemBuilder: (context, index) => Container(color: Colors.grey[850], child: Center(child: Text('#هاشتاج_${index + 1}', style: const TextStyle(color: Colors.white)))),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1.5,
+        ),
+        itemCount: 6,
+        itemBuilder: (context, index) => Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[850],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              '#هاشتاج_الترند_${index + 1} 🔥',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
       ),
     );
   }
