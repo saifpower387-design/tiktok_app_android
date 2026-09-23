@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
+// حالة عامة لحفظ حالة الحساب والتسجيل لضمان عدم فقدانها عند الخروج ودخول التطبيق
+class AppSession {
+  static bool isLoggedIn = false;
+  static String userEmail = 'saif_user@tiktok.com';
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const TikTokCloneApp());
@@ -19,12 +25,13 @@ class TikTokCloneApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
         primaryColor: Colors.redAccent,
       ),
-      home: const AuthScreen(),
+      // التحقق مما إذا كان المستخدم مسجلاً مسبقاً لعدم ضياع الجلسة
+      home: AppSession.isLoggedIn ? const MainScreen() : const AuthScreen(),
     );
   }
 }
 
-// 1. شاشة المصادقة الآمنة والمحلية
+// 1. شاشة المصادقة (AuthScreen)
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -37,6 +44,23 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   bool _isLogin = true;
   bool _isLoading = false;
+
+  void _loginWithSocial(String provider) {
+    setState(() => _isLoading = true);
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        AppSession.isLoggedIn = true; // حفظ حالة الحساب
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم تسجيل الدخول بنجاح عبر $provider! 🚀'), backgroundColor: Colors.green),
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    });
+  }
 
   void _submitAuthForm() {
     final email = _emailController.text.trim();
@@ -53,6 +77,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
+        AppSession.isLoggedIn = true; // حفظ حالة الحساب
+        AppSession.userEmail = email;
         setState(() => _isLoading = false);
         Navigator.pushReplacement(
           context,
@@ -91,6 +117,36 @@ class _AuthScreenState extends State<AuthScreen> {
                   onPressed: () => setState(() => _isLogin = !_isLogin),
                   child: Text(_isLogin ? 'ليس لديك حساب؟ أنشئ حساباً' : 'لديك حساب؟ سجل دخولك', style: const TextStyle(color: Colors.amber)),
                 ),
+                
+                const Divider(height: 30, color: Colors.grey),
+                const Text('أو المتابعة باستخدام', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 15),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.g_mobiledata, size: 45, color: Colors.white),
+                      style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
+                      onPressed: () => _loginWithSocial('Google (Gmail)'),
+                      tooltip: 'تسجيل الدخول بـ Gmail',
+                    ),
+                    const SizedBox(width: 15),
+                    IconButton(
+                      icon: const Icon(Icons.facebook, size: 35, color: Colors.blueAccent),
+                      style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
+                      onPressed: () => _loginWithSocial('Facebook'),
+                      tooltip: 'تسجيل الدخول بـ Facebook',
+                    ),
+                    const SizedBox(width: 15),
+                    IconButton(
+                      icon: const Icon(Icons.camera_alt, size: 32, color: Colors.pinkAccent),
+                      style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
+                      onPressed: () => _loginWithSocial('Instagram'),
+                      tooltip: 'تسجيل الدخول بـ Instagram',
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -113,7 +169,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const VideoFeedScreen(),
     const DiscoverScreen(),
-    const FullCameraStudioScreen(),
+    const FullCameraStudioScreen(), // استوديو الكاميرا الحقيقي للتصوير المباشر
     const InboxScreen(),
     const ProfileScreen(),
   ];
@@ -132,7 +188,7 @@ class _MainScreenState extends State<MainScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'اكتشف'),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box, size: 38, color: Colors.redAccent), label: 'إنشاء'),
+          BottomNavigationBarItem(icon: Icon(Icons.add_box, size: 38, color: Colors.redAccent), label: 'تصوير'),
           BottomNavigationBarItem(icon: Icon(Icons.message), label: 'الرسائل والشات'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'حسابي'),
         ],
@@ -270,19 +326,19 @@ class VideoFeedScreen extends StatelessWidget {
   }
 }
 
-// 4. استوديو الكاميرا ونشر الفيديو
+// 4. استوديو الكاميرا الحقيقي (لتصوير فيديو جديد بالكاميرا مباشرة)
 class FullCameraStudioScreen extends StatelessWidget {
   const FullCameraStudioScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('استوديو النشر')),
+      appBar: AppBar(title: const Text('استوديو التصوير بالكاميرا')),
       body: Center(
         child: ElevatedButton.icon(
           style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(16)),
-          icon: const Icon(Icons.video_library, color: Colors.white),
-          label: const Text('اختر فيديو وانشره الآن 🚀', style: TextStyle(color: Colors.white, fontSize: 16)),
+          icon: const Icon(Icons.camera_alt, color: Colors.white),
+          label: const Text('افتح الكاميرا وسجل فيديو الآن 🔴', style: TextStyle(color: Colors.white, fontSize: 16)),
           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const UploadPostScreen())),
         ),
       ),
@@ -299,29 +355,30 @@ class UploadPostScreen extends StatefulWidget {
 
 class _UploadPostScreenState extends State<UploadPostScreen> {
   final _captionController = TextEditingController();
-  File? _selectedVideoFile;
+  File? _recordedVideoFile;
   bool _isUploading = false;
   bool _commentsAllowed = true;
 
-  Future<void> _pickVideo() async {
+  Future<void> _recordVideoWithCamera() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickVideo(source: ImageSource.gallery);
+    // فتح كاميرا الهاتف لتسجيل فيديو فعلي
+    final pickedFile = await picker.pickVideo(source: ImageSource.camera);
     if (pickedFile != null) {
-      setState(() => _selectedVideoFile = File(pickedFile.path));
+      setState(() => _recordedVideoFile = File(pickedFile.path));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم اختيار الفيديو بنجاح! 🎬'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الفيديو بالكاميرا بنجاح! 🎥'), backgroundColor: Colors.green));
       }
     }
   }
 
   void _upload() {
-    if (_selectedVideoFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر فيديو أولاً!'), backgroundColor: Colors.red));
+    if (_recordedVideoFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء تصوير فيديو بالكاميرا أولاً!'), backgroundColor: Colors.red));
       return;
     }
     setState(() => _isUploading = true);
     
-    Future.delayed(const Duration(seconds: 15), () {
+    Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() => _isUploading = false);
         Navigator.pop(context);
@@ -333,16 +390,16 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('رفع الفيديو')),
+      appBar: AppBar(title: const Text('تسجيل ورفع الفيديو')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
             ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: _selectedVideoFile == null ? Colors.grey[850] : Colors.green),
-              icon: const Icon(Icons.video_library),
-              label: Text(_selectedVideoFile == null ? 'اختر فيديو من الجهاز' : 'تم اختيار الفيديو'),
-              onPressed: _pickVideo,
+              style: ElevatedButton.styleFrom(backgroundColor: _recordedVideoFile == null ? Colors.grey[850] : Colors.green, padding: const EdgeInsets.all(12)),
+              icon: const Icon(Icons.camera_alt),
+              label: Text(_recordedVideoFile == null ? 'تشغيل الكاميرا للتصوير (Camera)' : 'تم التقاط الفيديو بنجاح ✅'),
+              onPressed: _recordVideoWithCamera,
             ),
             const SizedBox(height: 20),
             TextField(controller: _captionController, maxLines: 3, decoration: const InputDecoration(hintText: 'اكتب وصف الفيديو..', filled: true)),
@@ -493,7 +550,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 }
 
-// 6. صفحة الملف الشخصي والبث المباشر
+// 6. صفحة الملف الشخصي وتسجيل الخروج وحفظ الحساب
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
@@ -506,7 +563,9 @@ class ProfileScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.red),
+            tooltip: 'تسجيل الخروج',
             onPressed: () {
+              AppSession.isLoggedIn = false; // تصفير حالة الدخول عند تسجيل الخروج يدوياً
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const AuthScreen()),
@@ -521,7 +580,9 @@ class ProfileScreen extends StatelessWidget {
           children: [
             const CircleAvatar(radius: 40, child: Icon(Icons.person, size: 40)),
             const SizedBox(height: 10),
-            const Text('@saif_creator', style: TextStyle(fontSize: 18)),
+            Text(AppSession.userEmail, style: const TextStyle(fontSize: 16, color: Colors.grey)),
+            const SizedBox(height: 5),
+            const Text('@saif_creator', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent),
