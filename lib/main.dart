@@ -545,12 +545,42 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
             icon: const Icon(Icons.photo_library),
             label: const Text('اختر من المعرض'),
             onPressed: _pickFromGallery,
+onPressed: _pickFromGallery,
+  ),
+),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('الكاميرا الحية')),
+        body: Center(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            icon: const Icon(Icons.photo_library),
+            label: const Text('اختر من المعرض'),
+            onPressed: _pickFromGallery,
           ),
         ),
       );
     }
+
     return Scaffold(
       body: Stack(
+        fit: StackFit.expand,
+        children: [
+          CameraPreview(_controller!),
+          Container(
+            color: _selectedFilter == 'فلتر نيون أزرق'
+                ? Colors.blue.withOpacity(0.15)
+                : _selectedFilter == 'فلتر جمالي دافئ'
+                    ? Colors.orange.withOpacity(0.15)
+                    : Colors.transparent,
+          ),
+        ],
+      ),
         fit: StackFit.expand,
         children: [
           _controller != null && _controller!.value.isInitialized
