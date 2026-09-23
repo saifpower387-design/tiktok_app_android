@@ -823,16 +823,20 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
                   const Icon(Icons.music_note, color: Colors.amberAccent),
                   const SizedBox(width: 10),
                   Expanded(child: Text('الأغنية: $_selectedSong', style: const TextStyle(color: Colors.white))),
-                  TextButton(onPressed: _openSongsPicker, child: const Text('تغيير', style: TextStyle(color: Colors.amberAccent))),
+                  TextButton(
+                    onPressed: _openSongsPicker,
+                    child: const Text('تغيير', style: TextStyle(color: Colors.redAccent)),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 15),
             TextField(
               controller: _captionController,
-              maxLines: 3,
+              maxLines: 4,
               decoration: InputDecoration(
-                hintText: 'اكتب وصف الفيديو...',
+                hintText: 'اكتب وصفاً لفيديوك، أو أضف هاشتاجات وإشارات...',
+                hintStyle: const TextStyle(color: Colors.grey),
                 filled: true,
                 fillColor: Colors.grey[900],
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
@@ -842,32 +846,36 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
             Row(
               children: [
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[850]),
-                  icon: const Icon(Icons.tag, color: Colors.amberAccent),
-                  label: const Text('هاشتاج #'),
-                  onPressed: () => _insertText(' #ترند_St '),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+                  onPressed: () => _insertText(' #ترند_تيك_توك'),
+                  icon: const Icon(Icons.tag, size: 16),
+                  label: const Text('إضافة هاشتاج'),
                 ),
                 const SizedBox(width: 10),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[850]),
-                  icon: const Icon(Icons.alternate_email, color: Colors.blueAccent),
-                  label: const Text('إشارة @'),
-                  onPressed: () => _insertText(' @صديقي '),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+                  onPressed: () => _insertText(' @saif_creator'),
+                  icon: const Icon(Icons.alternate_email, size: 16),
+                  label: const Text('إشارة صديق'),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             SwitchListTile(
-              title: const Text('السماح بالتعليقات'),
+              title: const Text('السماح بالتعليقات', style: TextStyle(color: Colors.white)),
               value: _commentsAllowed,
               activeColor: Colors.redAccent,
               onChanged: (val) => setState(() => _commentsAllowed = val),
             ),
             const SizedBox(height: 30),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
               onPressed: _publishVideo,
-              child: const Text('نشر الآن 🚀', style: TextStyle(fontSize: 16, color: Colors.white)),
+              child: const Text('نشر الفيديو الآن 🚀', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -876,195 +884,283 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
   }
 }
 
-// 6. صفحة الرسائل
+// 6. شاشة الاستكشاف (DiscoverScreen)
+class DiscoverScreen extends StatelessWidget {
+  const DiscoverScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> trendingHashtags = [
+      '#StPro_Trends',
+      '#تحدي_الرقص',
+      '#برمجة_تطبيقات',
+      '#كوميديا_مصرية',
+      '#فوائد_تقنية',
+      '#أفضل_خوارزمية',
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('اكتشف الترندات والهاشتاجات'),
+        backgroundColor: Colors.black,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text('الهاشتاجات الرائجة 🔥', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: trendingHashtags.map((tag) {
+              return Chip(
+                backgroundColor: Colors.grey[900],
+                label: Text(tag, style: const TextStyle(color: Colors.amberAccent)),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 25),
+          const Text('فيديوهات مقترحة لك 🎥', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.75,
+            ),
+            itemCount: 4,
+            itemBuilder: (context, index) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.play_circle_outline, size: 50, color: Colors.redAccent),
+                    const SizedBox(height: 10),
+                    Text('فيديو رائج #${index + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    const Text('مشاهدات عالية 🚀', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 7. شاشة الرسائل (InboxScreen)
 class InboxScreen extends StatelessWidget {
   const InboxScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('الرسائل والإشعارات')),
-      body: ListView.builder(
-        itemCount: 3,
-        itemBuilder: (context, index) => ListTile(
-          leading: const CircleAvatar(backgroundColor: Colors.redAccent, child: Icon(Icons.person, color: Colors.white)),
-          title: Text('صديق المنصة ${index + 1}'),
-          subtitle: const Text('أرسل لك تفاعلاً جديداً...'),
-        ),
+      appBar: AppBar(
+        title: const Text('الرسائل والإشعارات'),
+        backgroundColor: Colors.black,
+      ),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.redAccent, child: Icon(Icons.favorite, color: Colors.white)),
+            title: const Text('إعجابات جديدة', style: TextStyle(color: Colors.white)),
+            subtitle: const Text('أعجب 15 شخصاً بفيديوهاتك الأخيرة', style: TextStyle(color: Colors.grey)),
+            trailing: const Text('منذ 5د', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            onTap: () {},
+          ),
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.amber, child: Icon(Icons.comment, color: Colors.white)),
+            title: const Text('تعليقات جديدة', style: TextStyle(color: Colors.white)),
+            subtitle: const Text('علق أحدهم: "عاش يا فنان استمر!"', style: TextStyle(color: Colors.grey)),
+            trailing: const Text('منذ ساعة', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            onTap: () {},
+          ),
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.person_add, color: Colors.white)),
+            title: const Text('متابعون جدد', style: TextStyle(color: Colors.white)),
+            subtitle: const Text('بدأ مبرمجون آخرون متابعتك', style: TextStyle(color: Colors.grey)),
+            trailing: const Text('منذ يوم', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            onTap: () {},
+          ),
+        ],
       ),
     );
   }
 }
 
-// 7. صفحة الملف الشخصي الاحترافية
+// 8. شاشة الحساب الشخصي (ProfileScreen)
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final userVideos = AppData.publishedVideos;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(AppData.userName),
+        backgroundColor: Colors.black,
         actions: [
           IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
+            icon: const Icon(Icons.settings),
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('إعدادات الحساب متوفرة تماماً')));
             },
           ),
         ],
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 15),
-          const CircleAvatar(radius: 45, backgroundColor: Colors.redAccent, child: Icon(Icons.person, size: 55, color: Colors.white)),
-          const SizedBox(height: 10),
-          Text(AppData.userName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 3),
-          const Text('@saif_creator', style: TextStyle(fontSize: 14, color: Colors.grey)),
-          const SizedBox(height: 15),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعديل الملف الشخصي'))),
-                child: const Text('تعديل الملف الشخصي', style: TextStyle(color: Colors.white)),
-              ),
-              const SizedBox(width: 10),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ رابط الملف الشخصي! 🔗'))),
-                child: const Text('مشاركة الملف الشخصي', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Divider(color: Colors.grey),
-          const Text('الفيديوهات المنشورة 🎬', style: TextStyle(color: Colors.grey, fontSize: 13)),
-          const SizedBox(height: 10),
-          Expanded(
-            child: userVideos.isEmpty
-                ? const Center(child: Text('لم تقم بنشر أي فيديوهات بعد', style: TextStyle(color: Colors.grey)))
-                : GridView.builder(
-                    padding: const EdgeInsets.all(5),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 5,
-                      mainAxisSpacing: 5,
-                      childAspectRatio: 0.75,
-                    ),
-                    itemCount: userVideos.length,
-                    itemBuilder: (context, index) {
-                      return Container(
-                        decoration: BoxDecoration(color: Colors.grey[850], borderRadius: BorderRadius.circular(8)),
-                        child: const Center(child: Icon(Icons.play_arrow, color: Colors.white, size: 30)),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// 8. صفحة الإعدادات مع معلومات الحساب، الرصيد، وتسجيل الخروج
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الإعدادات والخصوصية')),
       body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          ListTile(
-            leading: const Icon(Icons.person_outline, color: Colors.white),
-            title: const Text('المعلومات الشخصية'),
-            subtitle: Text('الاسم: ${AppData.userName}\nالرقم: ${AppData.userPhone}\nالبريد: ${AppData.userEmail}'),
-            isThreeLine: true,
-          ),
-          const Divider(color: Colors.grey),
-          ListTile(
-            leading: const Icon(Icons.account_balance_wallet, color: Colors.amberAccent),
-            title: const Text('الرصيد والأرباح'),
-            subtitle: Text('رصيدك الحالي: ${AppData.userBalance} عملة 💰'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('رصيد الحساب'),
-                  content: Text('لديك الآن ${AppData.userBalance} عملة قابلة للسحب والأرباح.'),
-                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً'))],
+          Center(
+            child: Column(
+              children: [
+                const CircleAvatar(
+                  radius: 45,
+                  backgroundColor: Colors.redAccent,
+                  child: Icon(Icons.person, size: 50, color: Colors.white),
                 ),
-              );
-            },
-          ),
-          const Divider(color: Colors.grey),
-          const SizedBox(height: 40),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.all(12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              icon: const Icon(Icons.logout, color: Colors.white),
-              label: const Text('تسجيل الخروج من الحساب', style: TextStyle(color: Colors.white, fontSize: 16)),
-              onPressed: () async {
-                AppData.isLoggedIn = false;
-                await AppData.syncToStorage();
-                if (context.mounted) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AuthScreen()),
-                    (route) => false,
-                  );
-                }
-              },
+                const SizedBox(height: 12),
+                Text('@${AppData.userName}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 5),
+                Text(AppData.userEmail, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 15),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Column(
+                      children: const [
+                        Text('142', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                        Text('المتابَعون', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                    const SizedBox(width: 30),
+                    Column(
+                      children: const [
+                        Text('3.8K', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                        Text('المتابِعون', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                    const SizedBox(width: 30),
+                    Column(
+                      children: [
+                        Text('${AppData.userBalance}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.amberAccent)),
+                        const Text('الرصيد 🪙', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 25),
+          const Divider(color: Colors.grey),
+          const SizedBox(height: 10),
+          const Text('فيديوهاتك المنشورة:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 10),
+          AppData.publishedVideos.isEmpty
+              ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي فيديو بعد', style: TextStyle(color: Colors.grey))))
+              : GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 5,
+                    mainAxisSpacing: 5,
+                    childAspectRatio: 0.75,
+                  ),
+                  itemCount: AppData.publishedVideos.length,
+                  itemBuilder: (context, index) {
+                    final vid = AppData.publishedVideos[index];
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[900],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: vid.videoPath.isNotEmpty && File(vid.videoPath).existsSync()
+                            ? Image.file(File(vid.videoPath), fit: BoxFit.cover)
+                            : const Center(child: Icon(Icons.videocam, color: Colors.redAccent)),
+                      ),
+                    );
+                  },
+                ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]),
+            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            label: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)),
+            onPressed: () async {
+              AppData.isLoggedIn = false;
+              await AppData.syncToStorage();
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AuthScreen()),
+                );
+              }
+            },
+          ),
         ],
       ),
     );
   }
 }
 
+// 9. شاشة البث المباشر (LiveStreamScreen)
 class LiveStreamScreen extends StatelessWidget {
   const LiveStreamScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    print("Building LiveStreamScreen");
     return Scaffold(
-      appBar: AppBar(title: const Text('البث المباشر')),
-      body: const Center(child: Text('🔴 أنت الآن في بث مباشر مع المتابعين', style: TextStyle(color: Colors.white, fontSize: 18))),
-    );
-  }
-}
-
-class DiscoverScreen extends StatelessWidget {
-  const DiscoverScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    print("Building DiscoverScreen");
-    return Scaffold(
-      appBar: AppBar(title: const Text('اكتشف الترندات')),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: 1.5,
-        ),
-        itemCount: 6,
-        itemBuilder: (context, index) => Container(
-          decoration: BoxDecoration(color: Colors.grey[850], borderRadius: BorderRadius.circular(12)),
-          child: Center(child: Text('#هاشتاج_St_${index + 1} 🔥', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-        ),
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            color: Colors.grey[900],
+            child: const Center(
+              child: Text(
+                '🔴 جاري بث الفيديو المباشر الآن...\nالتفاعل مع المتابعين فعال ⚡',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 50,
+            left: 20,
+            child: Row(
+              children: [
+                const CircleAvatar(backgroundColor: Colors.redAccent, child: Icon(Icons.person, color: Colors.white)),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text('بث مباشر لـ سيف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    Text('1.4K مشاهد', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 50,
+            right: 20,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+        ],
       ),
     );
   }
