@@ -607,7 +607,6 @@ onPressed: _pickFromGallery,
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تفعيل: $_selectedFilter ✨')));
               },
             ),
-          ),
           Positioned(
             bottom: 30,
             left: 0,
