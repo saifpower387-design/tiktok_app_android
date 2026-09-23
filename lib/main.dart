@@ -549,12 +549,13 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
         ),
       );
     }
-
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          CameraPreview(_controller!),
+          _controller != null && _controller!.value.isInitialized
+              ? CameraPreview(_controller!)
+              : const Center(child: CircularProgressIndicator()),
           Container(
             color: _selectedFilter == 'فلتر نيون أزرق'
                 ? Colors.blue.withOpacity(0.15)
@@ -562,6 +563,8 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
                     ? Colors.orange.withOpacity(0.15)
                     : Colors.transparent,
           ),
+        ],
+      ),
           Positioned(
             top: 50,
             right: 16,
