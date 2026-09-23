@@ -661,19 +661,6 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
                                     : (_isRecording ? Icons.stop : Icons.fiber_manual_record),
                             color: Colors.white,
                             size: 40,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 36),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
