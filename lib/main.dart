@@ -233,7 +233,6 @@ class _AuthScreenState extends State<AuthScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // تصميم شعار S مع T احترافي
                 Container(
                   width: 90,
                   height: 90,
@@ -792,7 +791,7 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
     );
 
     AppData.publishedVideos.insert(0, newVideo);
-    await AppData.syncToStorage(); // حفظ البيانات فوراً
+    await AppData.syncToStorage();
 
     if (mounted) {
       Navigator.popUntil(context, (route) => route.isFirst);
@@ -948,7 +947,7 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: userVideos.isEmpty
-                .?(const Center(child: Text('لم تقم بنشر أي فيديوهات بعد', style: TextStyle(color: Colors.grey))))
+                ? const Center(child: Text('لم تقم بنشر أي فيديوهات بعد', style: TextStyle(color: Colors.grey)))
                 : GridView.builder(
                     padding: const EdgeInsets.all(5),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1037,6 +1036,7 @@ class LiveStreamScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print("Building LiveStreamScreen");
     return Scaffold(
       appBar: AppBar(title: const Text('البث المباشر')),
       body: const Center(child: Text('🔴 أنت الآن في بث مباشر مع المتابعين', style: TextStyle(color: Colors.white, fontSize: 18))),
@@ -1049,6 +1049,7 @@ class DiscoverScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print("Building DiscoverScreen");
     return Scaffold(
       appBar: AppBar(title: const Text('اكتشف الترندات')),
       body: GridView.builder(
