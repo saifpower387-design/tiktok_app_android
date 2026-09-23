@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:camera/camera.dart';
-import 'dart:io';
 
 // قائمة عالمية لحفظ الفيديوهات المنشورة ديناميكياً
 class VideoItem {
@@ -135,6 +134,13 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
@@ -144,7 +150,7 @@ class _AuthScreenState extends State<AuthScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.tiktok, size: 80, color: Colors.redAccent),
+                const Icon(Icons.music_video, size: 80, color: Colors.redAccent),
                 const SizedBox(height: 20),
                 Text(_isLogin ? 'تسجيل الدخول لتيك توك' : 'إنشاء حساب جديد 🚀', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 30),
@@ -287,6 +293,12 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final videos = AppData.publishedVideos;
 
@@ -309,14 +321,12 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                     return Stack(
                       fit: StackFit.expand,
                       children: [
-                        video.videoPath.isNotEmpty && File(video.videoPath).existsSync()
-                            ? Image.file(File(video.videoPath), fit: BoxFit.cover)
-                            : Container(
-                                color: Colors.grey[900],
-                                child: const Center(
-                                  child: Icon(Icons.play_circle_fill, size: 80, color: Colors.redAccent),
-                                ),
-                              ),
+                        Container(
+                          color: Colors.grey[900],
+                          child: const Center(
+                            child: Icon(Icons.play_circle_fill, size: 80, color: Colors.redAccent),
+                          ),
+                        ),
                         Positioned(
                           left: 15,
                           bottom: 80,
@@ -417,14 +427,22 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
   }
 
   Future<void> _initCamera() async {
-    if (AppData.cameras.isNotEmpty) {
-      _controller = CameraController(AppData.cameras[0], ResolutionPreset.high);
-      try {
-        await _controller!.initialize();
-        if (mounted) setState(() => _isCameraInitialized = true);
-      } catch (e) {
-        debugPrint("خطأ فتح الكاميرا: $e");
-      }
+    if (AppData.cameras.isEmpty) return;
+
+    final controller = CameraController(
+      AppData.cameras.first,
+      ResolutionPreset.high,
+      enableAudio: true,
+    );
+    _controller = controller;
+
+    try {
+      await controller.initialize();
+      if (mounted) setState(() => _isCameraInitialized = true);
+    } on CameraException catch (e) {
+      debugPrint('خطأ فتح الكاميرا: ${e.code}');
+      await controller.dispose();
+      _controller = null;
     }
   }
 
@@ -436,13 +454,17 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
 
   Future<void> _pickFromGallery() async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickVideo(source: ImageSource.gallery);
-    if (pickedFile != null && mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => UploadPostScreen(mediaPath: pickedFile.path)),
-      );
-    }
+    final XFile? pickedFile = _selectedMode == 'صورة'
+        ? await picker.pickImage(source: ImageSource.gallery)
+        : await picker.pickVideo(source: ImageSource.gallery);
+
+    if (!mounted || pickedFile == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UploadPostScreen(mediaPath: pickedFile.path),
+      ),
+    );
   }
 
   @override
@@ -721,6 +743,12 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
 
     Navigator.popUntil(context, (route) => route.isFirst);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نشر الفيديو بنجاح وظهر في ملفك الشخصي! 🚀'), backgroundColor: Colors.green));
+  }
+
+  @override
+  void dispose() {
+    _captionController.dispose();
+    super.dispose();
   }
 
   @override
