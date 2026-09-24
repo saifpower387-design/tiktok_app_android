@@ -5,9 +5,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
+
+// Agora App ID الخاص بالبث المباشر
+const agoraAppId = 'b959d814f9e04c70aa7c5d1808bb434f';
 
 // قائمة عالمية لحفظ الفيديوهات المنشورة ديناميكياً
 class VideoItem {
@@ -282,16 +288,34 @@ class _RemoteVideoState extends State<RemoteVideo> {
   void initState() {
     super.initState();
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize().then((_) { if (mounted) setState(() {}); });
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      });
   }
+
   @override
-  void dispose() { _controller.dispose(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_controller.value.isInitialized) return const Center(child: CircularProgressIndicator());
     return GestureDetector(
-      onTap: () { setState(() { _controller.value.isPlaying ? _controller.pause() : _controller.play(); }); },
-      child: FittedBox(fit: BoxFit.cover, child: SizedBox(width: _controller.value.size.width, height: _controller.value.size.height, child: VideoPlayer(_controller))),
+      onTap: () {
+        setState(() {
+          _controller.value.isPlaying ? _controller.pause() : _controller.play();
+        });
+      },
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _controller.value.size.width,
+          height: _controller.value.size.height,
+          child: VideoPlayer(_controller),
+        ),
+      ),
     );
   }
 }
@@ -327,7 +351,10 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     final ownerId = (await videoRef.get()).data()?['ownerId'];
     if (!liked && ownerId != null && ownerId != user.uid) {
       await FirebaseFirestore.instance.collection('users').doc(ownerId).collection('notifications').add({
-        'title': 'إعجاب جديد', 'body': '${user.displayName ?? 'مستخدم'} أعجب بمنشورك', 'type': 'like', 'createdAt': FieldValue.serverTimestamp(),
+        'title': 'إعجاب جديد',
+        'body': '${user.displayName ?? 'مستخدم'} أعجب بمنشورك',
+        'type': 'like',
+        'createdAt': FieldValue.serverTimestamp(),
       });
     }
   }
@@ -352,14 +379,20 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     final ownerId = (await videoRef.get()).data()?['ownerId'];
     if (ownerId != null && ownerId != user.uid) {
       await FirebaseFirestore.instance.collection('users').doc(ownerId).collection('notifications').add({
-        'title': 'تعليق جديد', 'body': '${user.displayName ?? 'مستخدم'} كتب تعليقًا على منشورك', 'type': 'comment', 'createdAt': FieldValue.serverTimestamp(),
+        'title': 'تعليق جديد',
+        'body': '${user.displayName ?? 'مستخدم'} كتب تعليقًا على منشورك',
+        'type': 'comment',
+        'createdAt': FieldValue.serverTimestamp(),
       });
     }
   }
 
   void _showCommentsSheet(String videoId, bool allowed) {
     if (!allowed) {
-      showModalBottomSheet(context: context, builder: (_) => const SizedBox(height: 180, child: Center(child: Text('التعليقات مغلقة لهذا المنشور'))));
+      showModalBottomSheet(
+        context: context,
+        builder: (_) => const SizedBox(height: 180, child: Center(child: Text('التعليقات مغلقة لهذا المنشور'))),
+      );
       return;
     }
     final controller = TextEditingController();
@@ -373,18 +406,35 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
           height: MediaQuery.of(sheetContext).size.height * .65,
           child: Column(children: [
             const Padding(padding: EdgeInsets.all(14), child: Text('التعليقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-            Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('videos').doc(videoId).collection('comments').orderBy('createdAt', descending: true).snapshots(),
-              builder: (_, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                if (snapshot.data!.docs.isEmpty) return const Center(child: Text('كن أول من يعلق'));
-                return ListView(children: snapshot.data!.docs.map((doc) {
-                  final data = doc.data();
-                  return ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(data['username'] ?? 'مستخدم'), subtitle: Text(data['text'] ?? ''));
-                }).toList());
-              },
-            )),
-            Row(children: [Expanded(child: TextField(controller: controller, decoration: const InputDecoration(hintText: 'اكتب تعليقًا...'))), IconButton(icon: const Icon(Icons.send, color: Colors.redAccent), onPressed: () async { await _addComment(videoId, controller.text); controller.clear(); })]),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('videos').doc(videoId).collection('comments').orderBy('createdAt', descending: true).snapshots(),
+                builder: (_, snapshot) {
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  if (snapshot.data!.docs.isEmpty) return const Center(child: Text('كن أول من يعلق'));
+                  return ListView(
+                    children: snapshot.data!.docs.map((doc) {
+                      final data = doc.data();
+                      return ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.person)),
+                        title: Text(data['username'] ?? 'مستخدم'),
+                        subtitle: Text(data['text'] ?? ''),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ),
+            Row(children: [
+              Expanded(child: TextField(controller: controller, decoration: const InputDecoration(hintText: 'اكتب تعليقًا...'))),
+              IconButton(
+                icon: const Icon(Icons.send, color: Colors.redAccent),
+                onPressed: () async {
+                  await _addComment(videoId, controller.text);
+                  controller.clear();
+                },
+              ),
+            ]),
           ]),
         ),
       ),
@@ -392,7 +442,10 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   }
 
   @override
-  void dispose() { _searchController.dispose(); super.dispose(); }
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -422,11 +475,22 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
             );
           },
         ),
-        Positioned(top: 40, left: 16, right: 16, child: TextField(
-          controller: _searchController,
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(hintText: 'ابحث عن مستخدمين أو هاشتاجات...', filled: true, fillColor: Colors.black54, prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none)),
-        )),
+        Positioned(
+          top: 40,
+          left: 16,
+          right: 16,
+          child: TextField(
+            controller: _searchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'ابحث عن مستخدمين أو هاشتاجات...',
+              filled: true,
+              fillColor: Colors.black54,
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+            ),
+          ),
+        ),
       ]),
     );
   }
@@ -443,46 +507,104 @@ class PublicProfileScreen extends StatefulWidget {
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool _following = false;
   bool _busy = false;
+
   @override
-  void initState() { super.initState(); _loadFollowing(); }
-  Future<void> _loadFollowing() async {
-    final me=FirebaseAuth.instance.currentUser;
-    if (me == null) return;
-    final doc=await FirebaseFirestore.instance.collection('users').doc(me.uid).collection('following').doc(widget.userId).get();
-    if (mounted) setState(() => _following=doc.exists);
+  void initState() {
+    super.initState();
+    _loadFollowing();
   }
+
+  Future<void> _loadFollowing() async {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null) return;
+    final doc = await FirebaseFirestore.instance.collection('users').doc(me.uid).collection('following').doc(widget.userId).get();
+    if (mounted) setState(() => _following = doc.exists);
+  }
+
   Future<void> _toggleFollow() async {
-    final me=FirebaseAuth.instance.currentUser;
+    final me = FirebaseAuth.instance.currentUser;
     if (me == null || me.uid == widget.userId) return;
-    setState(() => _busy=true);
-    final db=FirebaseFirestore.instance;
-    final following=db.collection('users').doc(me.uid).collection('following').doc(widget.userId);
-    final follower=db.collection('users').doc(widget.userId).collection('followers').doc(me.uid);
-    final myRef=db.collection('users').doc(me.uid);
-    final targetRef=db.collection('users').doc(widget.userId);
+    setState(() => _busy = true);
+    final db = FirebaseFirestore.instance;
+    final following = db.collection('users').doc(me.uid).collection('following').doc(widget.userId);
+    final follower = db.collection('users').doc(widget.userId).collection('followers').doc(me.uid);
+    final myRef = db.collection('users').doc(me.uid);
+    final targetRef = db.collection('users').doc(widget.userId);
     await db.runTransaction((tx) async {
-      final target=await tx.get(targetRef);
-      final mine=await tx.get(myRef);
-      final followers=(target.data()?['followersCount'] as num? ?? 0).toInt();
-      final followingCount=(mine.data()?['followingCount'] as num? ?? 0).toInt();
+      final target = await tx.get(targetRef);
+      final mine = await tx.get(myRef);
+      final followers = (target.data()?['followersCount'] as num? ?? 0).toInt();
+      final followingCount = (mine.data()?['followingCount'] as num? ?? 0).toInt();
       if (_following) {
-        tx.delete(following); tx.delete(follower);
-        tx.update(targetRef, {'followersCount': followers > 0 ? followers-1 : 0});
-        tx.update(myRef, {'followingCount': followingCount > 0 ? followingCount-1 : 0});
+        tx.delete(following);
+        tx.delete(follower);
+        tx.update(targetRef, {'followersCount': followers > 0 ? followers - 1 : 0});
+        tx.update(myRef, {'followingCount': followingCount > 0 ? followingCount - 1 : 0});
       } else {
         tx.set(following, {'userId': widget.userId, 'createdAt': FieldValue.serverTimestamp()});
         tx.set(follower, {'userId': me.uid, 'createdAt': FieldValue.serverTimestamp()});
-        tx.update(targetRef, {'followersCount': followers+1});
-        tx.update(myRef, {'followingCount': followingCount+1});
+        tx.update(targetRef, {'followersCount': followers + 1});
+        tx.update(myRef, {'followingCount': followingCount + 1});
       }
     });
-    if (!_following) await db.collection('users').doc(widget.userId).collection('notifications').add({'title':'متابع جديد','body':'${me.displayName ?? 'مستخدم'} بدأ متابعتك','type':'follow','createdAt':FieldValue.serverTimestamp()});
-    if (mounted) setState(() { _following=!_following; _busy=false; });
+    if (!_following) {
+      await db.collection('users').doc(widget.userId).collection('notifications').add({
+        'title': 'متابع جديد',
+        'body': '${me.displayName ?? 'مستخدم'} بدأ متابعتك',
+        'type': 'follow',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _following = !_following;
+        _busy = false;
+      });
+    }
   }
+
   @override
   Widget build(BuildContext context) {
-    final videos=FirebaseFirestore.instance.collection('videos').where('ownerId',isEqualTo:widget.userId).orderBy('createdAt',descending:true).snapshots();
-    return Scaffold(appBar:AppBar(title:Text('@${widget.username}')),body:Column(children:[const SizedBox(height:20),Text('@${widget.username}',style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold)),const SizedBox(height:10),FilledButton(onPressed:_busy?null:_toggleFollow,child:Text(_following?'إلغاء المتابعة':'متابعة')),const Divider(),Expanded(child:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:videos,builder:(_,snap){if(!snap.hasData)return const Center(child:CircularProgressIndicator());return GridView.builder(gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossSpacing:4,mainAxisSpacing:4),itemCount:snap.data!.docs.length,itemBuilder:(_,i){final u=snap.data!.docs[i].data()['downloadUrl'] as String? ?? '';return u.isEmpty?const ColoredBox(color:Colors.grey):Image.network(u,fit:BoxFit.cover);});}))]));
+    final videos = FirebaseFirestore.instance
+        .collection('videos')
+        .where('ownerId', isEqualTo: widget.userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+    return Scaffold(
+      appBar: AppBar(title: Text('@${widget.username}')),
+      body: Column(children: [
+        const SizedBox(height: 20),
+        Text('@${widget.username}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        FilledButton(
+          onPressed: _busy ? null : _toggleFollow,
+          child: Text(_following ? 'إلغاء المتابعة' : 'متابعة'),
+        ),
+        const Divider(),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: videos,
+            builder: (_, snap) {
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              return GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 4,
+                  mainAxisSpacing: 4,
+                ),
+                itemCount: snap.data!.docs.length,
+                itemBuilder: (_, i) {
+                  final u = snap.data!.docs[i].data()['downloadUrl'] as String? ?? '';
+                  return u.isEmpty
+                      ? const ColoredBox(color: Colors.grey)
+                      : Image.network(u, fit: BoxFit.cover);
+                },
+              );
+            },
+          ),
+        ),
+      ]),
+    );
   }
 }
 
@@ -498,27 +620,40 @@ class FirestoreVideoCard extends StatefulWidget {
 class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
   bool _liked = false;
   bool _saved = false;
+
   @override
-  void initState() { super.initState(); _loadLike(); _loadSaved(); }
+  void initState() {
+    super.initState();
+    _loadLike();
+    _loadSaved();
+  }
+
   Future<void> _loadLike() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final snap = await widget.doc.reference.collection('likes').doc(uid).get();
     if (mounted) setState(() => _liked = snap.exists);
   }
+
   Future<void> _loadSaved() async {
-    final uid=FirebaseAuth.instance.currentUser?.uid;
-    if(uid==null)return;
-    final snap=await FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id).get();
-    if(mounted)setState(()=>_saved=snap.exists);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final snap = await FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id).get();
+    if (mounted) setState(() => _saved = snap.exists);
   }
+
   Future<void> _toggleSaved() async {
-    final uid=FirebaseAuth.instance.currentUser?.uid;
-    if(uid==null)return;
-    final ref=FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id);
-    if(_saved) await ref.delete(); else await ref.set({'videoId':widget.doc.id,'createdAt':FieldValue.serverTimestamp()});
-    if(mounted)setState(()=>_saved=!_saved);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ref = FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id);
+    if (_saved) {
+      await ref.delete();
+    } else {
+      await ref.set({'videoId': widget.doc.id, 'createdAt': FieldValue.serverTimestamp()});
+    }
+    if (mounted) setState(() => _saved = !_saved);
   }
+
   @override
   Widget build(BuildContext context) {
     final data = widget.doc.data();
@@ -527,12 +662,73 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
     final likes = (data['likesCount'] as num? ?? 0).toInt();
     final comments = (data['commentsCount'] as num? ?? 0).toInt();
     return Stack(fit: StackFit.expand, children: [
-      if (url.isEmpty) const ColoredBox(color: Colors.black, child: Center(child: Icon(Icons.play_circle, size: 80)))
-      else if (isImage) Image.network(url, fit: BoxFit.cover)
-      else RemoteVideo(url: url),
-      const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black87]))),
-      Positioned(left: 15, right: 90, bottom: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: data['ownerId'] ?? '', username: data['username'] ?? 'user')), child: Text('@${data['username'] ?? 'user'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), const SizedBox(height: 5), Text(data['caption'] ?? ''), const SizedBox(height: 5), Text('♫ ${data['selectedSong'] ?? ''}', style: const TextStyle(fontSize: 12))])),
-      Positioned(right: 10, bottom: 70, child: Column(children: [IconButton(icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.red : Colors.white, size: 38), onPressed: () async { await widget.onLike(widget.doc.id, _liked); if (mounted) setState(() => _liked = !_liked); }), Text('$likes'), const SizedBox(height: 12), IconButton(icon: const Icon(Icons.comment, size: 34), onPressed: () => widget.onComment(widget.doc.id, data['commentsAllowed'] != false)), Text('$comments'), const SizedBox(height: 12), const Icon(Icons.share, size: 34), const Text('مشاركة', style: TextStyle(fontSize: 12)), const SizedBox(height: 12), IconButton(onPressed: _toggleSaved, icon: Icon(_saved ? Icons.bookmark : Icons.bookmark_border, size: 32)), const Text('حفظ', style: TextStyle(fontSize: 12))])),
+      if (url.isEmpty)
+        const ColoredBox(color: Colors.black, child: Center(child: Icon(Icons.play_circle, size: 80)))
+      else if (isImage)
+        Image.network(url, fit: BoxFit.cover)
+      else
+        RemoteVideo(url: url),
+      const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.transparent, Colors.black87],
+          ),
+        ),
+      ),
+      Positioned(
+        left: 15,
+        right: 90,
+        bottom: 80,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PublicProfileScreen(
+                  userId: data['ownerId'] ?? '',
+                  username: data['username'] ?? 'user',
+                ),
+              ),
+            ),
+            child: Text('@${data['username'] ?? 'user'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+          const SizedBox(height: 5),
+          Text(data['caption'] ?? ''),
+          const SizedBox(height: 5),
+          Text('♫ ${data['selectedSong'] ?? ''}', style: const TextStyle(fontSize: 12)),
+        ]),
+      ),
+      Positioned(
+        right: 10,
+        bottom: 70,
+        child: Column(children: [
+          IconButton(
+            icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.red : Colors.white, size: 38),
+            onPressed: () async {
+              await widget.onLike(widget.doc.id, _liked);
+              if (mounted) setState(() => _liked = !_liked);
+            },
+          ),
+          Text('$likes'),
+          const SizedBox(height: 12),
+          IconButton(
+            icon: const Icon(Icons.comment, size: 34),
+            onPressed: () => widget.onComment(widget.doc.id, data['commentsAllowed'] != false),
+          ),
+          Text('$comments'),
+          const SizedBox(height: 12),
+          const Icon(Icons.share, size: 34),
+          const Text('مشاركة', style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 12),
+          IconButton(
+            onPressed: _toggleSaved,
+            icon: Icon(_saved ? Icons.bookmark : Icons.bookmark_border, size: 32),
+          ),
+          const Text('حفظ', style: TextStyle(fontSize: 12)),
+        ]),
+      ),
     ]);
   }
 }
@@ -576,6 +772,17 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
       await controller.dispose();
       _controller = null;
     }
+  }
+
+  // نقفل الكاميرا قبل فتح البث عشان Agora يقدر يستخدمها، وبعدين نفتحها تاني
+  Future<void> _openLiveStream() async {
+    final old = _controller;
+    _controller = null;
+    if (mounted) setState(() => _isCameraInitialized = false);
+    await old?.dispose();
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => const LiveStreamScreen()));
+    if (mounted) _initCamera();
   }
 
   @override
@@ -653,7 +860,7 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
             right: 0,
             child: Column(
               children: [
-                // التبديل بين الأضاع (صورة، فيديو، بث مباشر)
+                // التبديل بين الأوضاع (صورة، فيديو، بث مباشر)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: ['صورة', 'فيديو', 'بث مباشر'].map((mode) {
@@ -688,7 +895,7 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
                     GestureDetector(
                       onTap: () async {
                         if (_selectedMode == 'بث مباشر') {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const LiveStreamScreen()));
+                          await _openLiveStream();
                           return;
                         }
                         if (_selectedMode == 'صورة') {
@@ -864,11 +1071,16 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
 
   Future<void> _publishVideo() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل الدخول أولًا'))); return; }
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل الدخول أولًا')));
+      return;
+    }
     setState(() {});
     try {
       final id = FirebaseFirestore.instance.collection('videos').doc().id;
-      final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') || widget.mediaPath.toLowerCase().endsWith('.jpeg') || widget.mediaPath.toLowerCase().endsWith('.png');
+      final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') ||
+          widget.mediaPath.toLowerCase().endsWith('.jpeg') ||
+          widget.mediaPath.toLowerCase().endsWith('.png');
       final ext = isImage ? 'jpg' : 'mp4';
       final ref = FirebaseStorage.instance.ref('videos/${user.uid}/$id.$ext');
       await ref.putFile(File(widget.mediaPath), SettableMetadata(contentType: isImage ? 'image/jpeg' : 'video/mp4'));
@@ -987,12 +1199,27 @@ class InboxScreen extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
     final stream = FirebaseFirestore.instance.collection('users').doc(uid).collection('notifications').orderBy('createdAt', descending: true).snapshots();
-    return Scaffold(appBar: AppBar(title: const Text('الإشعارات')), body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: stream, builder: (_, snapshot) {
-      if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}'));
-      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-      if (snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد إشعارات بعد'));
-      return ListView(children: snapshot.data!.docs.map((doc) { final data=doc.data(); return ListTile(leading: const CircleAvatar(child: Icon(Icons.notifications)), title: Text(data['title'] ?? 'إشعار جديد'), subtitle: Text(data['body'] ?? ''),); }).toList());
-    }));
+    return Scaffold(
+      appBar: AppBar(title: const Text('الإشعارات')),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: stream,
+        builder: (_, snapshot) {
+          if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}'));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد إشعارات بعد'));
+          return ListView(
+            children: snapshot.data!.docs.map((doc) {
+              final data = doc.data();
+              return ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.notifications)),
+                title: Text(data['title'] ?? 'إشعار جديد'),
+                subtitle: Text(data['body'] ?? ''),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -1005,10 +1232,72 @@ class ProfileScreen extends StatelessWidget {
     if (user == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
     final videos = FirebaseFirestore.instance.collection('videos').where('ownerId', isEqualTo: user.uid).orderBy('createdAt', descending: true).snapshots();
     final profile = FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
-    return Scaffold(appBar: AppBar(title: const Text('حسابي'), actions: [IconButton(icon: const Icon(Icons.menu), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())))]), body: StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(stream: profile, builder: (_, profileSnap) {
-      final data=profileSnap.data?.data() ?? {};
-      return Column(children: [const SizedBox(height: 15), CircleAvatar(radius: 45, backgroundImage: user.photoURL == null ? null : NetworkImage(user.photoURL!), child: user.photoURL == null ? const Icon(Icons.person, size: 55) : null), const SizedBox(height: 10), Text(data['displayName'] ?? user.displayName ?? user.email ?? 'مستخدم', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 5), Text(user.email ?? '', style: const TextStyle(color: Colors.grey)), const SizedBox(height: 15), Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('المتابعون: ${data['followersCount'] ?? 0}'), const SizedBox(width: 24), Text('المتابَعون: ${data['followingCount'] ?? 0}')]), const SizedBox(height: 15), const Divider(), const Text('منشوراتي', style: TextStyle(color: Colors.grey)), Expanded(child: StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream: videos, builder: (_, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final docs=snap.data!.docs; if (docs.isEmpty) return const Center(child: Text('لم تنشر شيئًا بعد')); return GridView.builder(padding: const EdgeInsets.all(5), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 5, mainAxisSpacing: 5), itemCount: docs.length, itemBuilder: (_, i) { final url=docs[i].data()['downloadUrl'] as String? ?? ''; return url.isEmpty ? const ColoredBox(color: Colors.grey) : Image.network(url, fit: BoxFit.cover); }); }))]);
-    }));
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('حسابي'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
+        ],
+      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: profile,
+        builder: (_, profileSnap) {
+          final data = profileSnap.data?.data() ?? {};
+          return Column(children: [
+            const SizedBox(height: 15),
+            CircleAvatar(
+              radius: 45,
+              backgroundImage: user.photoURL == null ? null : NetworkImage(user.photoURL!),
+              child: user.photoURL == null ? const Icon(Icons.person, size: 55) : null,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              data['displayName'] ?? user.displayName ?? user.email ?? 'مستخدم',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 5),
+            Text(user.email ?? '', style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 15),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('المتابعون: ${data['followersCount'] ?? 0}'),
+              const SizedBox(width: 24),
+              Text('المتابَعون: ${data['followingCount'] ?? 0}'),
+            ]),
+            const SizedBox(height: 15),
+            const Divider(),
+            const Text('منشوراتي', style: TextStyle(color: Colors.grey)),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: videos,
+                builder: (_, snap) {
+                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                  final docs = snap.data!.docs;
+                  if (docs.isEmpty) return const Center(child: Text('لم تنشر شيئًا بعد'));
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(5),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 5,
+                      mainAxisSpacing: 5,
+                    ),
+                    itemCount: docs.length,
+                    itemBuilder: (_, i) {
+                      final url = docs[i].data()['downloadUrl'] as String? ?? '';
+                      return url.isEmpty
+                          ? const ColoredBox(color: Colors.grey)
+                          : Image.network(url, fit: BoxFit.cover);
+                    },
+                  );
+                },
+              ),
+            ),
+          ]);
+        },
+      ),
+    );
   }
 }
 
@@ -1069,21 +1358,117 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-class LiveStreamScreen extends StatelessWidget {
+// 8. البث المباشر عبر Agora (بـ Token آمن من Firebase Cloud Function)
+class LiveStreamScreen extends StatefulWidget {
   const LiveStreamScreen({super.key});
 
   @override
+  State<LiveStreamScreen> createState() => _LiveStreamScreenState();
+}
+
+class _LiveStreamScreenState extends State<LiveStreamScreen> {
+  RtcEngine? _engine;
+  bool _joined = false;
+  String? _error;
+  late final String _channelId;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    _channelId = 'live_$uid';
+    _startLive();
+  }
+
+  Future<String> _fetchToken() async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('getAgoraToken')
+        .call({'channelName': _channelId, 'role': 'broadcaster'});
+    return result.data['token'] as String;
+  }
+
+  Future<void> _startLive() async {
+    try {
+      if (FirebaseAuth.instance.currentUser == null) {
+        throw 'سجل الدخول أولًا';
+      }
+      await [Permission.camera, Permission.microphone].request();
+      final token = await _fetchToken();
+      final engine = createAgoraRtcEngine();
+      _engine = engine;
+      await engine.initialize(const RtcEngineContext(
+        appId: agoraAppId,
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+      ));
+      engine.registerEventHandler(RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          if (mounted) setState(() => _joined = true);
+        },
+        // تجديد التوكن تلقائيًا قبل انتهائه عشان البث ما يقفلش
+        onTokenPrivilegeWillExpire: (RtcConnection connection, String oldToken) async {
+          try {
+            final fresh = await _fetchToken();
+            await engine.renewToken(fresh);
+          } catch (e) {
+            if (mounted) setState(() => _error = 'تعذر تجديد التوكن: $e');
+          }
+        },
+        onError: (ErrorCodeType err, String msg) {
+          if (mounted) setState(() => _error = 'Agora error: $err $msg');
+        },
+      ));
+      await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+      await engine.enableVideo();
+      await engine.startPreview();
+      await engine.joinChannel(
+        token: token,
+        channelId: _channelId,
+        uid: 0,
+        options: const ChannelMediaOptions(
+          clientRoleType: ClientRoleType.clientRoleBroadcaster,
+          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+        ),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) setState(() => _error = 'فشل جلب التوكن: ${e.code} ${e.message ?? ''}');
+    } catch (e) {
+      if (mounted) setState(() => _error = 'تعذر بدء البث: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    final engine = _engine;
+    if (engine != null) {
+      engine.leaveChannel();
+      engine.release();
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    Widget body;
+    if (_error != null) {
+      body = Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(_error!, textAlign: TextAlign.center)));
+    } else if (_joined && _engine != null) {
+      body = AgoraVideoView(
+        controller: VideoViewController(
+          rtcEngine: _engine!,
+          canvas: const VideoCanvas(uid: 0),
+        ),
+      );
+    } else {
+      body = const Center(child: CircularProgressIndicator());
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text('البث المباشر')),
-      body: const Center(
-        child: Text('🔴 أنت الآن في بث مباشر مع المتابعين', style: TextStyle(color: Colors.white, fontSize: 18)),
-      ),
+      appBar: AppBar(title: const Text('🔴 البث المباشر')),
+      body: body,
     );
   }
 }
 
-// 8. صفحة اكتشف الترندات
+// 9. صفحة اكتشف الترندات
 class DiscoverScreen extends StatelessWidget {
   const DiscoverScreen({super.key});
 
