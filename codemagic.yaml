@@ -10,20 +10,25 @@ workflows:
           rm -rf android
           flutter create . --platforms=android
 
-      - name: Set Android SDK versions
+      - name: Force write build.gradle with SDK 34
         script: |
           python3 - <<'PY'
-          import re
           from pathlib import Path
-          for name in ('android/app/build.gradle.kts', 'android/app/build.gradle'):
-              p = Path(name)
-              if p.exists():
-                  t = p.read_text()
-                  t = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 34', t)
-                  t = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 34', t)
-                  t = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', t)
-                  p.write_text(t)
-                  print("Updated successfully: " + name)
+          gradle_path = Path('android/app/build.gradle')
+          if gradle_path.exists():
+              content = gradle_path.read_text()
+              # تعديل القيم مباشرة بضمان تام
+              content = content.replace('compileSdkVersion flutter.compileSdkVersion', 'compileSdk = 34')
+              content = content.replace('targetSdkVersion flutter.targetSdkVersion', 'targetSdk = 34')
+              content = content.replace('minSdkVersion flutter.minSdkVersion', 'minSdk = 24')
+              # لو الملف يستخدم الصيغة الحديثة أو القديمة
+              if 'compileSdk ' not in content:
+                  content = content.replace('android {', 'android {\n    compileSdk = 34\n    targetSdk = 34\n')
+              else:
+                  content = content.replace('compileSdk = 31', 'compileSdk = 34')
+                  content = content.replace('targetSdk = 31', 'targetSdk = 34')
+              gradle_path.write_text(content)
+              print("Updated build.gradle successfully!")
           PY
 
       - name: Configure Firebase Android
