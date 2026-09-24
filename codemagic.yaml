@@ -72,8 +72,9 @@ workflows:
               p = Path(name)
               if p.exists():
                   t = p.read_text()
-                  t = re.sub(r'compileSdk(Version)?\s*=?\s*flutter\.compileSdkVersion', 'compileSdk = 36', t)
-                  t = re.sub(r'minSdk(Version)?\s*=?\s*flutter\.minSdkVersion', 'minSdk = 24', t)
+                  t = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 34', t)
+                  t = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 34', t)
+                  t = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', t)
                   p.write_text(t)
                   print(name)
                   for line in t.splitlines():
