@@ -324,6 +324,12 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
         transaction.update(videoRef, {'likesCount': current + 1});
       }
     });
+    final ownerId = (await videoRef.get()).data()?['ownerId'];
+    if (!liked && ownerId != null && ownerId != user.uid) {
+      await FirebaseFirestore.instance.collection('users').doc(ownerId).collection('notifications').add({
+        'title': 'إعجاب جديد', 'body': '${user.displayName ?? 'مستخدم'} أعجب بمنشورك', 'type': 'like', 'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
   }
 
   Future<void> _addComment(String videoId, String text) async {
@@ -343,6 +349,12 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
       });
       transaction.update(videoRef, {'commentsCount': current + 1});
     });
+    final ownerId = (await videoRef.get()).data()?['ownerId'];
+    if (ownerId != null && ownerId != user.uid) {
+      await FirebaseFirestore.instance.collection('users').doc(ownerId).collection('notifications').add({
+        'title': 'تعليق جديد', 'body': '${user.displayName ?? 'مستخدم'} كتب تعليقًا على منشورك', 'type': 'comment', 'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
   }
 
   void _showCommentsSheet(String videoId, bool allowed) {
@@ -420,6 +432,60 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   }
 }
 
+class PublicProfileScreen extends StatefulWidget {
+  final String userId;
+  final String username;
+  const PublicProfileScreen({super.key, required this.userId, required this.username});
+  @override
+  State<PublicProfileScreen> createState() => _PublicProfileScreenState();
+}
+
+class _PublicProfileScreenState extends State<PublicProfileScreen> {
+  bool _following = false;
+  bool _busy = false;
+  @override
+  void initState() { super.initState(); _loadFollowing(); }
+  Future<void> _loadFollowing() async {
+    final me=FirebaseAuth.instance.currentUser;
+    if (me == null) return;
+    final doc=await FirebaseFirestore.instance.collection('users').doc(me.uid).collection('following').doc(widget.userId).get();
+    if (mounted) setState(() => _following=doc.exists);
+  }
+  Future<void> _toggleFollow() async {
+    final me=FirebaseAuth.instance.currentUser;
+    if (me == null || me.uid == widget.userId) return;
+    setState(() => _busy=true);
+    final db=FirebaseFirestore.instance;
+    final following=db.collection('users').doc(me.uid).collection('following').doc(widget.userId);
+    final follower=db.collection('users').doc(widget.userId).collection('followers').doc(me.uid);
+    final myRef=db.collection('users').doc(me.uid);
+    final targetRef=db.collection('users').doc(widget.userId);
+    await db.runTransaction((tx) async {
+      final target=await tx.get(targetRef);
+      final mine=await tx.get(myRef);
+      final followers=(target.data()?['followersCount'] as num? ?? 0).toInt();
+      final followingCount=(mine.data()?['followingCount'] as num? ?? 0).toInt();
+      if (_following) {
+        tx.delete(following); tx.delete(follower);
+        tx.update(targetRef, {'followersCount': followers > 0 ? followers-1 : 0});
+        tx.update(myRef, {'followingCount': followingCount > 0 ? followingCount-1 : 0});
+      } else {
+        tx.set(following, {'userId': widget.userId, 'createdAt': FieldValue.serverTimestamp()});
+        tx.set(follower, {'userId': me.uid, 'createdAt': FieldValue.serverTimestamp()});
+        tx.update(targetRef, {'followersCount': followers+1});
+        tx.update(myRef, {'followingCount': followingCount+1});
+      }
+    });
+    if (!_following) await db.collection('users').doc(widget.userId).collection('notifications').add({'title':'متابع جديد','body':'${me.displayName ?? 'مستخدم'} بدأ متابعتك','type':'follow','createdAt':FieldValue.serverTimestamp()});
+    if (mounted) setState(() { _following=!_following; _busy=false; });
+  }
+  @override
+  Widget build(BuildContext context) {
+    final videos=FirebaseFirestore.instance.collection('videos').where('ownerId',isEqualTo:widget.userId).orderBy('createdAt',descending:true).snapshots();
+    return Scaffold(appBar:AppBar(title:Text('@${widget.username}')),body:Column(children:[const SizedBox(height:20),Text('@${widget.username}',style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold)),const SizedBox(height:10),FilledButton(onPressed:_busy?null:_toggleFollow,child:Text(_following?'إلغاء المتابعة':'متابعة')),const Divider(),Expanded(child:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:videos,builder:(_,snap){if(!snap.hasData)return const Center(child:CircularProgressIndicator());return GridView.builder(gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossSpacing:4,mainAxisSpacing:4),itemCount:snap.data!.docs.length,itemBuilder:(_,i){final u=snap.data!.docs[i].data()['downloadUrl'] as String? ?? '';return u.isEmpty?const ColoredBox(color:Colors.grey):Image.network(u,fit:BoxFit.cover);});}))]));
+  }
+}
+
 class FirestoreVideoCard extends StatefulWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
   final void Function(String, bool) onComment;
@@ -431,13 +497,27 @@ class FirestoreVideoCard extends StatefulWidget {
 
 class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
   bool _liked = false;
+  bool _saved = false;
   @override
-  void initState() { super.initState(); _loadLike(); }
+  void initState() { super.initState(); _loadLike(); _loadSaved(); }
   Future<void> _loadLike() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final snap = await widget.doc.reference.collection('likes').doc(uid).get();
     if (mounted) setState(() => _liked = snap.exists);
+  }
+  Future<void> _loadSaved() async {
+    final uid=FirebaseAuth.instance.currentUser?.uid;
+    if(uid==null)return;
+    final snap=await FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id).get();
+    if(mounted)setState(()=>_saved=snap.exists);
+  }
+  Future<void> _toggleSaved() async {
+    final uid=FirebaseAuth.instance.currentUser?.uid;
+    if(uid==null)return;
+    final ref=FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id);
+    if(_saved) await ref.delete(); else await ref.set({'videoId':widget.doc.id,'createdAt':FieldValue.serverTimestamp()});
+    if(mounted)setState(()=>_saved=!_saved);
   }
   @override
   Widget build(BuildContext context) {
@@ -451,8 +531,8 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
       else if (isImage) Image.network(url, fit: BoxFit.cover)
       else RemoteVideo(url: url),
       const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black87]))),
-      Positioned(left: 15, right: 90, bottom: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('@${data['username'] ?? 'user'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 5), Text(data['caption'] ?? ''), const SizedBox(height: 5), Text('♫ ${data['selectedSong'] ?? ''}', style: const TextStyle(fontSize: 12))])),
-      Positioned(right: 10, bottom: 70, child: Column(children: [IconButton(icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.red : Colors.white, size: 38), onPressed: () async { await widget.onLike(widget.doc.id, _liked); if (mounted) setState(() => _liked = !_liked); }), Text('$likes'), const SizedBox(height: 12), IconButton(icon: const Icon(Icons.comment, size: 34), onPressed: () => widget.onComment(widget.doc.id, data['commentsAllowed'] != false)), Text('$comments'), const SizedBox(height: 12), const Icon(Icons.share, size: 34), const Text('مشاركة', style: TextStyle(fontSize: 12))])),
+      Positioned(left: 15, right: 90, bottom: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: data['ownerId'] ?? '', username: data['username'] ?? 'user')), child: Text('@${data['username'] ?? 'user'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), const SizedBox(height: 5), Text(data['caption'] ?? ''), const SizedBox(height: 5), Text('♫ ${data['selectedSong'] ?? ''}', style: const TextStyle(fontSize: 12))])),
+      Positioned(right: 10, bottom: 70, child: Column(children: [IconButton(icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.red : Colors.white, size: 38), onPressed: () async { await widget.onLike(widget.doc.id, _liked); if (mounted) setState(() => _liked = !_liked); }), Text('$likes'), const SizedBox(height: 12), IconButton(icon: const Icon(Icons.comment, size: 34), onPressed: () => widget.onComment(widget.doc.id, data['commentsAllowed'] != false)), Text('$comments'), const SizedBox(height: 12), const Icon(Icons.share, size: 34), const Text('مشاركة', style: TextStyle(fontSize: 12)), const SizedBox(height: 12), IconButton(onPressed: _toggleSaved, icon: Icon(_saved ? Icons.bookmark : Icons.bookmark_border, size: 32)), const Text('حفظ', style: TextStyle(fontSize: 12))])),
     ]);
   }
 }
