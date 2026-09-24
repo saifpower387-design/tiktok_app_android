@@ -13,21 +13,16 @@ workflows:
       - name: Update Android SDK versions in build.gradle
         script: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
           
-          build_gradle = Path('android/app/build.gradle')
-          if build_gradle.exists():
-              content = build_gradle.read_text()
-              # استبدال الإعدادات الافتراضية بقيم صريحة تدعم API 34
-              content = content.replace('flutter.compileSdkVersion', '34')
-              content = content.replace('flutter.targetSdkVersion', '34')
-              content = content.replace('flutter.minSdkVersion', '24')
-              build_gradle.write_text(content)
-              print("Successfully updated android/app/build.gradle")
-          
-          local_properties = Path('android/local.properties')
-          if not local_properties.exists():
-              local_properties.write_text("flutter.sdk=" + "${FLUTTER_ROOT}\n")
+          for gradle_path in Path('android/app').glob('build.gradle*'):
+              content = gradle_path.read_text()
+              content = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 36', content)
+              content = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 36', content)
+              content = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', content)
+              gradle_path.write_text(content)
+              print(f"Successfully updated {gradle_path}")
           PY
 
       - name: Configure Firebase Android
