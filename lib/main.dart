@@ -296,7 +296,7 @@ class _RemoteVideoState extends State<RemoteVideo> {
   }
 }
 
-// 3. شاشة الفيديوهات الرئيسية مع خانة بحث علوية
+// 3. شاشة الفيديوهات الرئيسية المرتبطة بـ Firestore
 class VideoFeedScreen extends StatefulWidget {
   const VideoFeedScreen({super.key});
 
@@ -307,152 +307,153 @@ class VideoFeedScreen extends StatefulWidget {
 class _VideoFeedScreenState extends State<VideoFeedScreen> {
   final TextEditingController _searchController = TextEditingController();
 
-  void _showCommentsSheet(BuildContext context, bool commentsAllowed) {
+  Future<void> _toggleLike(String videoId, bool liked) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final videoRef = FirebaseFirestore.instance.collection('videos').doc(videoId);
+    final likeRef = videoRef.collection('likes').doc(user.uid);
+    final userLike = await likeRef.get();
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(videoRef);
+      final current = (snapshot.data()?['likesCount'] as num? ?? 0).toInt();
+      if (userLike.exists) {
+        transaction.delete(likeRef);
+        transaction.update(videoRef, {'likesCount': current > 0 ? current - 1 : 0});
+      } else {
+        transaction.set(likeRef, {'userId': user.uid, 'createdAt': FieldValue.serverTimestamp()});
+        transaction.update(videoRef, {'likesCount': current + 1});
+      }
+    });
+  }
+
+  Future<void> _addComment(String videoId, String text) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final value = text.trim();
+    if (user == null || value.isEmpty) return;
+    final videoRef = FirebaseFirestore.instance.collection('videos').doc(videoId);
+    final commentRef = videoRef.collection('comments').doc();
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(videoRef);
+      final current = (snapshot.data()?['commentsCount'] as num? ?? 0).toInt();
+      transaction.set(commentRef, {
+        'userId': user.uid,
+        'username': user.displayName ?? user.email?.split('@').first ?? 'مستخدم',
+        'text': value,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      transaction.update(videoRef, {'commentsCount': current + 1});
+    });
+  }
+
+  void _showCommentsSheet(String videoId, bool allowed) {
+    if (!allowed) {
+      showModalBottomSheet(context: context, builder: (_) => const SizedBox(height: 180, child: Center(child: Text('التعليقات مغلقة لهذا المنشور'))));
+      return;
+    }
+    final controller = TextEditingController();
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.grey[900],
-      builder: (context) {
-        if (!commentsAllowed) {
-          return const SizedBox(
-            height: 200,
-            child: Center(
-              child: Text('التعليقات مغلقة لهذا الفيديو بواسطة صاحب المنشور 🔒', style: TextStyle(color: Colors.white70)),
-            ),
-          );
-        }
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const Text('التعليقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Expanded(child: Center(child: Text('لا توجد تعليقات بعد.. كن أول من يعلق!', style: TextStyle(color: Colors.grey)))),
-              TextField(
-                decoration: InputDecoration(
-                  hintText: 'اكتب تعليقاً...',
-                  filled: true,
-                  fillColor: Colors.black,
-                  suffixIcon: IconButton(icon: const Icon(Icons.send, color: Colors.redAccent), onPressed: () {}),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: SizedBox(
+          height: MediaQuery.of(sheetContext).size.height * .65,
+          child: Column(children: [
+            const Padding(padding: EdgeInsets.all(14), child: Text('التعليقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('videos').doc(videoId).collection('comments').orderBy('createdAt', descending: true).snapshots(),
+              builder: (_, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (snapshot.data!.docs.isEmpty) return const Center(child: Text('كن أول من يعلق'));
+                return ListView(children: snapshot.data!.docs.map((doc) {
+                  final data = doc.data();
+                  return ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(data['username'] ?? 'مستخدم'), subtitle: Text(data['text'] ?? ''));
+                }).toList());
+              },
+            )),
+            Row(children: [Expanded(child: TextField(controller: controller, decoration: const InputDecoration(hintText: 'اكتب تعليقًا...'))), IconButton(icon: const Icon(Icons.send, color: Colors.redAccent), onPressed: () async { await _addComment(videoId, controller.text); controller.clear(); })]),
+          ]),
+        ),
+      ),
+    ).whenComplete(controller.dispose);
   }
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  void dispose() { _searchController.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    final videos = AppData.publishedVideos;
-
+    final query = FirebaseFirestore.instance.collection('videos').orderBy('createdAt', descending: true);
     return Scaffold(
-      body: Stack(
-        children: [
-          videos.isEmpty
-              ? const Center(
-                  child: Text(
-                    'لا توجد فيديوهات منشورة حالياً..\nاضغط على علامة (+) لتصوير ونشر أول فيديو! 🎥',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                )
-              : PageView.builder(
-                  scrollDirection: Axis.vertical,
-                  itemCount: videos.length,
-                  itemBuilder: (context, index) {
-                    final video = videos[index];
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        video.downloadUrl.isNotEmpty && video.mediaType == 'image'
-                            ? Image.network(video.downloadUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black))
-                            : video.downloadUrl.isNotEmpty && video.mediaType == 'video'
-                                ? RemoteVideo(url: video.downloadUrl)
-                                : Container(
-                                    color: Colors.grey[900],
-                                    child: const Center(child: Icon(Icons.play_circle_fill, size: 80, color: Colors.redAccent)),
-                                  ),
-                        Positioned(
-                          left: 15,
-                          bottom: 80,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('@${video.username}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                              const SizedBox(height: 5),
-                              Text(video.caption, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                              const SizedBox(height: 5),
-                              Row(
-                                children: [
-                                  const Icon(Icons.music_note, color: Colors.white, size: 14),
-                                  const SizedBox(width: 5),
-                                  Text(video.selectedSong, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Positioned(
-                          right: 15,
-                          bottom: 80,
-                          child: Column(
-                            children: [
-                              const Icon(Icons.favorite, size: 38, color: Colors.red),
-                              const Text('1.2K', style: TextStyle(color: Colors.white)),
-                              const SizedBox(height: 15),
-                              IconButton(
-                                icon: const Icon(Icons.comment, size: 36, color: Colors.white),
-                                onPressed: () => _showCommentsSheet(context, video.commentsAllowed),
-                              ),
-                              const Text('تعليق', style: TextStyle(color: Colors.white, fontSize: 12)),
-                              const SizedBox(height: 15),
-                              IconButton(
-                                icon: const Icon(Icons.share, size: 36, color: Colors.white),
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ رابط الفيديو!')));
-                                },
-                              ),
-                              const Text('مشاركة', style: TextStyle(color: Colors.white, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-          Positioned(
-            top: 40,
-            left: 16,
-            right: 16,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (val) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'ابحث عن مستخدمين، هاشتاجات، أو فيديوهات...',
-                      hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                      filled: true,
-                      fillColor: Colors.black54,
-                      prefixIcon: const Icon(Icons.search, color: Colors.white70),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      body: Stack(children: [
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: query.snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) return Center(child: Text('خطأ في تحميل المنشورات: ${snapshot.error}'));
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            final term = _searchController.text.trim().toLowerCase();
+            final docs = snapshot.data!.docs.where((doc) {
+              if (term.isEmpty) return true;
+              final data = doc.data();
+              return '${data['caption'] ?? ''} ${data['username'] ?? ''}'.toLowerCase().contains(term);
+            }).toList();
+            if (docs.isEmpty) return const Center(child: Text('لا توجد منشورات مطابقة'));
+            return PageView.builder(
+              scrollDirection: Axis.vertical,
+              itemCount: docs.length,
+              itemBuilder: (_, index) => FirestoreVideoCard(
+                doc: docs[index],
+                onComment: _showCommentsSheet,
+                onLike: _toggleLike,
+              ),
+            );
+          },
+        ),
+        Positioned(top: 40, left: 16, right: 16, child: TextField(
+          controller: _searchController,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(hintText: 'ابحث عن مستخدمين أو هاشتاجات...', filled: true, fillColor: Colors.black54, prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none)),
+        )),
+      ]),
     );
+  }
+}
+
+class FirestoreVideoCard extends StatefulWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final void Function(String, bool) onComment;
+  final Future<void> Function(String, bool) onLike;
+  const FirestoreVideoCard({super.key, required this.doc, required this.onComment, required this.onLike});
+  @override
+  State<FirestoreVideoCard> createState() => _FirestoreVideoCardState();
+}
+
+class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
+  bool _liked = false;
+  @override
+  void initState() { super.initState(); _loadLike(); }
+  Future<void> _loadLike() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final snap = await widget.doc.reference.collection('likes').doc(uid).get();
+    if (mounted) setState(() => _liked = snap.exists);
+  }
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.doc.data();
+    final url = data['downloadUrl'] as String? ?? '';
+    final isImage = data['mediaType'] == 'image';
+    final likes = (data['likesCount'] as num? ?? 0).toInt();
+    final comments = (data['commentsCount'] as num? ?? 0).toInt();
+    return Stack(fit: StackFit.expand, children: [
+      if (url.isEmpty) const ColoredBox(color: Colors.black, child: Center(child: Icon(Icons.play_circle, size: 80)))
+      else if (isImage) Image.network(url, fit: BoxFit.cover)
+      else RemoteVideo(url: url),
+      const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black87]))),
+      Positioned(left: 15, right: 90, bottom: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('@${data['username'] ?? 'user'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 5), Text(data['caption'] ?? ''), const SizedBox(height: 5), Text('♫ ${data['selectedSong'] ?? ''}', style: const TextStyle(fontSize: 12))])),
+      Positioned(right: 10, bottom: 70, child: Column(children: [IconButton(icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.red : Colors.white, size: 38), onPressed: () async { await widget.onLike(widget.doc.id, _liked); if (mounted) setState(() => _liked = !_liked); }), Text('$likes'), const SizedBox(height: 12), IconButton(icon: const Icon(Icons.comment, size: 34), onPressed: () => widget.onComment(widget.doc.id, data['commentsAllowed'] != false)), Text('$comments'), const SizedBox(height: 12), const Icon(Icons.share, size: 34), const Text('مشاركة', style: TextStyle(fontSize: 12))])),
+    ]);
   }
 }
 
@@ -898,107 +899,36 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
   }
 }
 
-// 5. صفحة الرسائل
+// 5. صفحة الرسائل والإشعارات الحقيقية
 class InboxScreen extends StatelessWidget {
   const InboxScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الرسائل والإشعارات')),
-      body: ListView.builder(
-        itemCount: 3,
-        itemBuilder: (context, index) => ListTile(
-          leading: const CircleAvatar(backgroundColor: Colors.redAccent, child: Icon(Icons.person, color: Colors.white)),
-          title: Text('صديق تيك توك ${index + 1}'),
-          subtitle: const Text('أرسل لك إعجاباً ومراسلة جديدة...'),
-        ),
-      ),
-    );
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
+    final stream = FirebaseFirestore.instance.collection('users').doc(uid).collection('notifications').orderBy('createdAt', descending: true).snapshots();
+    return Scaffold(appBar: AppBar(title: const Text('الإشعارات')), body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: stream, builder: (_, snapshot) {
+      if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}'));
+      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+      if (snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد إشعارات بعد'));
+      return ListView(children: snapshot.data!.docs.map((doc) { final data=doc.data(); return ListTile(leading: const CircleAvatar(child: Icon(Icons.notifications)), title: Text(data['title'] ?? 'إشعار جديد'), subtitle: Text(data['body'] ?? ''),); }).toList());
+    }));
   }
 }
 
-// 6. صفحة الملف الشخصي بالترتيب المطلوب مع أزرار متجاورة وقائمة إعدادات جانبية
+// 6. صفحة الملف الشخصي المرتبطة بـ Firestore
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
-    final userVideos = AppData.publishedVideos;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(AppData.userName),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: 15),
-          const CircleAvatar(radius: 45, backgroundColor: Colors.redAccent, child: Icon(Icons.person, size: 55, color: Colors.white)),
-          const SizedBox(height: 10),
-          Text(AppData.userName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 3),
-          const Text('@saif_creator', style: TextStyle(fontSize: 14, color: Colors.grey)),
-          const SizedBox(height: 15),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey)),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فتح نافذة تعديل الملف الشخصي')));
-                },
-                child: const Text('تعديل الملف الشخصي', style: TextStyle(color: Colors.white)),
-              ),
-              const SizedBox(width: 10),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey)),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ رابط ملفك الشخصي بنجاح! 🔗')));
-                },
-                child: const Text('مشاركة الملف الشخصي', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Divider(color: Colors.grey),
-          const Text('الفيديوهات المنشورة الخاصة بك 🎬', style: TextStyle(color: Colors.grey, fontSize: 13)),
-          const SizedBox(height: 10),
-          Expanded(
-            child: userVideos.isEmpty
-                ? const Center(child: Text('لم تقم بنشر أي فيديوهات بعد', style: TextStyle(color: Colors.grey)))
-                : GridView.builder(
-                    padding: const EdgeInsets.all(5),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 5,
-                      mainAxisSpacing: 5,
-                      childAspectRatio: 0.75,
-                    ),
-                    itemCount: userVideos.length,
-                    itemBuilder: (context, index) {
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey[850],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.play_arrow, color: Colors.white, size: 30),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
+    final videos = FirebaseFirestore.instance.collection('videos').where('ownerId', isEqualTo: user.uid).orderBy('createdAt', descending: true).snapshots();
+    final profile = FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+    return Scaffold(appBar: AppBar(title: const Text('حسابي'), actions: [IconButton(icon: const Icon(Icons.menu), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())))]), body: StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(stream: profile, builder: (_, profileSnap) {
+      final data=profileSnap.data?.data() ?? {};
+      return Column(children: [const SizedBox(height: 15), CircleAvatar(radius: 45, backgroundImage: user.photoURL == null ? null : NetworkImage(user.photoURL!), child: user.photoURL == null ? const Icon(Icons.person, size: 55) : null), const SizedBox(height: 10), Text(data['displayName'] ?? user.displayName ?? user.email ?? 'مستخدم', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 5), Text(user.email ?? '', style: const TextStyle(color: Colors.grey)), const SizedBox(height: 15), Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('المتابعون: ${data['followersCount'] ?? 0}'), const SizedBox(width: 24), Text('المتابَعون: ${data['followingCount'] ?? 0}')]), const SizedBox(height: 15), const Divider(), const Text('منشوراتي', style: TextStyle(color: Colors.grey)), Expanded(child: StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream: videos, builder: (_, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final docs=snap.data!.docs; if (docs.isEmpty) return const Center(child: Text('لم تنشر شيئًا بعد')); return GridView.builder(padding: const EdgeInsets.all(5), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 5, mainAxisSpacing: 5), itemCount: docs.length, itemBuilder: (_, i) { final url=docs[i].data()['downloadUrl'] as String? ?? ''; return url.isEmpty ? const ColoredBox(color: Colors.grey) : Image.network(url, fit: BoxFit.cover); }); }))]);
+    }));
   }
 }
 
