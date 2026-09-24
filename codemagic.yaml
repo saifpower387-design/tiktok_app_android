@@ -63,6 +63,25 @@ workflows:
               manifest.write_text(text)
           PY
 
+      - name: Set Android SDK versions
+        script: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          for name in ('android/app/build.gradle.kts', 'android/app/build.gradle'):
+              p = Path(name)
+              if p.exists():
+                  t = p.read_text()
+                  t = re.sub(r'compileSdk(Version)?\s*=?\s*flutter\.compileSdkVersion', 'compileSdk = 36', t)
+                  t = re.sub(r'minSdk(Version)?\s*=?\s*flutter\.minSdkVersion', 'minSdk = 24', t)
+                  p.write_text(t)
+                  print(name)
+                  for line in t.splitlines():
+                      if 'compileSdk' in line or 'minSdk' in line or 'targetSdk' in line:
+                          print(line)
+                  break
+          PY
+
       - name: Get packages
         script: flutter pub get
 
