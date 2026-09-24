@@ -10,6 +10,22 @@ workflows:
           rm -rf android
           flutter create . --platforms=android
 
+      - name: Set Android SDK versions
+        script: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          for name in ('android/app/build.gradle.kts', 'android/app/build.gradle'):
+              p = Path(name)
+              if p.exists():
+                  t = p.read_text()
+                  t = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 34', t)
+                  t = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 34', t)
+                  t = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', t)
+                  p.write_text(t)
+                  print("Updated successfully: " + name)
+          PY
+
       - name: Configure Firebase Android
         script: |
           test -f google-services.json || { echo "google-services.json is missing"; exit 1; }
@@ -61,26 +77,6 @@ workflows:
               )
               text = text.replace('<application', perms + '    <application', 1)
               manifest.write_text(text)
-          PY
-
-      - name: Set Android SDK versions
-        script: |
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-          for name in ('android/app/build.gradle.kts', 'android/app/build.gradle'):
-              p = Path(name)
-              if p.exists():
-                  t = p.read_text()
-                  t = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 34', t)
-                  t = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 34', t)
-                  t = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', t)
-                  p.write_text(t)
-                  print(name)
-                  for line in t.splitlines():
-                      if 'compileSdk' in line or 'minSdk' in line or 'targetSdk' in line:
-                          print(line)
-                  break
           PY
 
       - name: Get packages
