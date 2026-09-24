@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -50,8 +51,10 @@ void main() async {
   await Firebase.initializeApp();
   AppData.isLoggedIn = FirebaseAuth.instance.currentUser != null;
   if (FirebaseAuth.instance.currentUser != null) {
-    AppData.userEmail = FirebaseAuth.instance.currentUser!.email ?? AppData.userEmail;
-    AppData.userName = FirebaseAuth.instance.currentUser!.displayName ?? AppData.userName;
+    AppData.userEmail =
+        FirebaseAuth.instance.currentUser!.email ?? AppData.userEmail;
+    AppData.userName =
+        FirebaseAuth.instance.currentUser!.displayName ?? AppData.userName;
   }
   try {
     AppData.cameras = await availableCameras();
@@ -95,7 +98,9 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _loginWithSocial(String providerName, Color themeColor) async {
     if (providerName != 'Google (Gmail)') {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تسجيل $providerName يحتاج إعداد OAuth الخاص به أولًا')),
+        SnackBar(
+            content:
+                Text('تسجيل $providerName يحتاج إعداد OAuth الخاص به أولًا')),
       );
       return;
     }
@@ -108,9 +113,13 @@ class _AuthScreenState extends State<AuthScreen> {
         accessToken: auth.accessToken,
         idToken: auth.idToken,
       );
-      final result = await FirebaseAuth.instance.signInWithCredential(credential);
+      final result =
+          await FirebaseAuth.instance.signInWithCredential(credential);
       final user = result.user!;
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
         'uid': user.uid,
         'email': user.email,
         'displayName': user.displayName ?? 'مستخدم جديد',
@@ -119,11 +128,20 @@ class _AuthScreenState extends State<AuthScreen> {
       }, SetOptions(merge: true));
       if (!mounted) return;
       AppData.isLoggedIn = true;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
+      AppData.userEmail = user.email ?? AppData.userEmail;
+      AppData.userName = user.displayName ?? AppData.userName;
+      Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (_) => const MainScreen()));
     } on FirebaseAuthException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل Google: ${e.message ?? e.code}')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('فشل Google: ${e.message ?? e.code}')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تسجيل Google: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('فشل تسجيل Google: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -133,28 +151,45 @@ class _AuthScreenState extends State<AuthScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     if (email.isEmpty || password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل بريدًا صحيحًا وكلمة مرور من 6 أحرف على الأقل')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('أدخل بريدًا صحيحًا وكلمة مرور من 6 أحرف على الأقل')));
       return;
     }
     setState(() => _isLoading = true);
     try {
       final result = _isLogin
-          ? await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password)
-          : await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
+          ? await FirebaseAuth.instance
+              .signInWithEmailAndPassword(email: email, password: password)
+          : await FirebaseAuth.instance
+              .createUserWithEmailAndPassword(email: email, password: password);
       final user = result.user!;
       AppData.isLoggedIn = true;
       AppData.userEmail = user.email ?? email;
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      AppData.userName = user.displayName ?? email.split('@').first;
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
         'uid': user.uid,
         'email': user.email,
         'displayName': user.displayName ?? email.split('@').first,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
+      if (mounted) {
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const MainScreen()));
+      }
     } on FirebaseAuthException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تسجيل الدخول: ${e.message ?? e.code}')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('فشل تسجيل الدخول: ${e.message ?? e.code}')));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -177,49 +212,80 @@ class _AuthScreenState extends State<AuthScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.music_video, size: 80, color: Colors.redAccent),
+                const Icon(Icons.music_video,
+                    size: 80, color: Colors.redAccent),
                 const SizedBox(height: 20),
-                Text(_isLogin ? 'تسجيل الدخول لتيك توك' : 'إنشاء حساب جديد 🚀', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                    _isLogin
+                        ? 'تسجيل الدخول لتيك توك'
+                        : 'إنشاء حساب جديد 🚀',
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 30),
-                TextField(controller: _emailController, decoration: const InputDecoration(hintText: 'البريد الإلكتروني', filled: true)),
+                TextField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(
+                        hintText: 'البريد الإلكتروني', filled: true)),
                 const SizedBox(height: 15),
-                TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(hintText: 'كلمة المرور', filled: true)),
+                TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                        hintText: 'كلمة المرور', filled: true)),
                 const SizedBox(height: 25),
                 _isLoading
                     ? const CircularProgressIndicator(color: Colors.redAccent)
                     : ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, minimumSize: const Size(double.infinity, 50)),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            minimumSize: const Size(double.infinity, 50)),
                         onPressed: _submitAuthForm,
-                        child: Text(_isLogin ? 'دخول' : 'تسجيل', style: const TextStyle(color: Colors.white, fontSize: 16)),
+                        child: Text(_isLogin ? 'دخول' : 'تسجيل',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16)),
                       ),
                 TextButton(
                   onPressed: () => setState(() => _isLogin = !_isLogin),
-                  child: Text(_isLogin ? 'ليس لديك حساب؟ أنشئ حساباً' : 'لديك حساب؟ سجل دخولك', style: const TextStyle(color: Colors.amber)),
+                  child: Text(
+                      _isLogin
+                          ? 'ليس لديك حساب؟ أنشئ حساباً'
+                          : 'لديك حساب؟ سجل دخولك',
+                      style: const TextStyle(color: Colors.amber)),
                 ),
                 const Divider(height: 30, color: Colors.grey),
-                const Text('أو المتابعة بربط التطبيقات الخارجية', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const Text('أو المتابعة بربط التطبيقات الخارجية',
+                    style: TextStyle(color: Colors.grey, fontSize: 13)),
                 const SizedBox(height: 15),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.g_mobiledata, size: 45, color: Colors.white),
-                      style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
-                      onPressed: () => _loginWithSocial('Google (Gmail)', Colors.redAccent),
+                      icon: const Icon(Icons.g_mobiledata,
+                          size: 45, color: Colors.white),
+                      style: IconButton.styleFrom(
+                          backgroundColor: Colors.grey[900]),
+                      onPressed: () =>
+                          _loginWithSocial('Google (Gmail)', Colors.redAccent),
                       tooltip: 'تسجيل بـ Gmail',
                     ),
                     const SizedBox(width: 15),
                     IconButton(
-                      icon: const Icon(Icons.facebook, size: 35, color: Colors.blueAccent),
-                      style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
-                      onPressed: () => _loginWithSocial('Facebook', Colors.blueAccent),
+                      icon: const Icon(Icons.facebook,
+                          size: 35, color: Colors.blueAccent),
+                      style: IconButton.styleFrom(
+                          backgroundColor: Colors.grey[900]),
+                      onPressed: () =>
+                          _loginWithSocial('Facebook', Colors.blueAccent),
                       tooltip: 'تسجيل بـ Facebook',
                     ),
                     const SizedBox(width: 15),
                     IconButton(
-                      icon: const Icon(Icons.camera_alt, size: 32, color: Colors.pinkAccent),
-                      style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
-                      onPressed: () => _loginWithSocial('Instagram', Colors.pinkAccent),
+                      icon: const Icon(Icons.camera_alt,
+                          size: 32, color: Colors.pinkAccent),
+                      style: IconButton.styleFrom(
+                          backgroundColor: Colors.grey[900]),
+                      onPressed: () =>
+                          _loginWithSocial('Instagram', Colors.pinkAccent),
                       tooltip: 'تسجيل بـ Instagram',
                     ),
                   ],
@@ -265,7 +331,9 @@ class _MainScreenState extends State<MainScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'اكتشف'),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box, size: 38, color: Colors.redAccent), label: 'تصوير'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.add_box, size: 38, color: Colors.redAccent),
+              label: 'تصوير'),
           BottomNavigationBarItem(icon: Icon(Icons.message), label: 'الرسائل'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'حسابي'),
         ],
@@ -300,7 +368,9 @@ class _RemoteVideoState extends State<RemoteVideo> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized) return const Center(child: CircularProgressIndicator());
+    if (!_controller.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -333,7 +403,8 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   Future<void> _toggleLike(String videoId, bool liked) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    final videoRef = FirebaseFirestore.instance.collection('videos').doc(videoId);
+    final videoRef =
+        FirebaseFirestore.instance.collection('videos').doc(videoId);
     final likeRef = videoRef.collection('likes').doc(user.uid);
     final userLike = await likeRef.get();
     await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -341,15 +412,21 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
       final current = (snapshot.data()?['likesCount'] as num? ?? 0).toInt();
       if (userLike.exists) {
         transaction.delete(likeRef);
-        transaction.update(videoRef, {'likesCount': current > 0 ? current - 1 : 0});
+        transaction.update(
+            videoRef, {'likesCount': current > 0 ? current - 1 : 0});
       } else {
-        transaction.set(likeRef, {'userId': user.uid, 'createdAt': FieldValue.serverTimestamp()});
+        transaction.set(likeRef,
+            {'userId': user.uid, 'createdAt': FieldValue.serverTimestamp()});
         transaction.update(videoRef, {'likesCount': current + 1});
       }
     });
     final ownerId = (await videoRef.get()).data()?['ownerId'];
     if (!liked && ownerId != null && ownerId != user.uid) {
-      await FirebaseFirestore.instance.collection('users').doc(ownerId).collection('notifications').add({
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(ownerId)
+          .collection('notifications')
+          .add({
         'title': 'إعجاب جديد',
         'body': '${user.displayName ?? 'مستخدم'} أعجب بمنشورك',
         'type': 'like',
@@ -362,14 +439,16 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     final user = FirebaseAuth.instance.currentUser;
     final value = text.trim();
     if (user == null || value.isEmpty) return;
-    final videoRef = FirebaseFirestore.instance.collection('videos').doc(videoId);
+    final videoRef =
+        FirebaseFirestore.instance.collection('videos').doc(videoId);
     final commentRef = videoRef.collection('comments').doc();
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(videoRef);
       final current = (snapshot.data()?['commentsCount'] as num? ?? 0).toInt();
       transaction.set(commentRef, {
         'userId': user.uid,
-        'username': user.displayName ?? user.email?.split('@').first ?? 'مستخدم',
+        'username':
+            user.displayName ?? user.email?.split('@').first ?? 'مستخدم',
         'text': value,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -377,7 +456,11 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     });
     final ownerId = (await videoRef.get()).data()?['ownerId'];
     if (ownerId != null && ownerId != user.uid) {
-      await FirebaseFirestore.instance.collection('users').doc(ownerId).collection('notifications').add({
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(ownerId)
+          .collection('notifications')
+          .add({
         'title': 'تعليق جديد',
         'body': '${user.displayName ?? 'مستخدم'} كتب تعليقًا على منشورك',
         'type': 'comment',
@@ -390,7 +473,9 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     if (!allowed) {
       showModalBottomSheet(
         context: context,
-        builder: (_) => const SizedBox(height: 180, child: Center(child: Text('التعليقات مغلقة لهذا المنشور'))),
+        builder: (_) => const SizedBox(
+            height: 180,
+            child: Center(child: Text('التعليقات مغلقة لهذا المنشور'))),
       );
       return;
     }
@@ -400,17 +485,31 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.grey[900],
       builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
         child: SizedBox(
           height: MediaQuery.of(sheetContext).size.height * .65,
           child: Column(children: [
-            const Padding(padding: EdgeInsets.all(14), child: Text('التعليقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            const Padding(
+                padding: EdgeInsets.all(14),
+                child: Text('التعليقات',
+                    style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold))),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance.collection('videos').doc(videoId).collection('comments').orderBy('createdAt', descending: true).snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('videos')
+                    .doc(videoId)
+                    .collection('comments')
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
                 builder: (_, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  if (snapshot.data!.docs.isEmpty) return const Center(child: Text('كن أول من يعلق'));
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.data!.docs.isEmpty) {
+                    return const Center(child: Text('كن أول من يعلق'));
+                  }
                   return ListView(
                     children: snapshot.data!.docs.map((doc) {
                       final data = doc.data();
@@ -425,7 +524,11 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
               ),
             ),
             Row(children: [
-              Expanded(child: TextField(controller: controller, decoration: const InputDecoration(hintText: 'اكتب تعليقًا...'))),
+              Expanded(
+                  child: TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(
+                          hintText: 'اكتب تعليقًا...'))),
               IconButton(
                 icon: const Icon(Icons.send, color: Colors.redAccent),
                 onPressed: () async {
@@ -448,21 +551,33 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final query = FirebaseFirestore.instance.collection('videos').orderBy('createdAt', descending: true);
+    final query = FirebaseFirestore.instance
+        .collection('videos')
+        .orderBy('createdAt', descending: true);
     return Scaffold(
       body: Stack(children: [
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: query.snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.hasError) return Center(child: Text('خطأ في تحميل المنشورات: ${snapshot.error}'));
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            if (snapshot.hasError) {
+              return Center(
+                  child:
+                      Text('خطأ في تحميل المنشورات: ${snapshot.error}'));
+            }
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
             final term = _searchController.text.trim().toLowerCase();
             final docs = snapshot.data!.docs.where((doc) {
               if (term.isEmpty) return true;
               final data = doc.data();
-              return '${data['caption'] ?? ''} ${data['username'] ?? ''}'.toLowerCase().contains(term);
+              return '${data['caption'] ?? ''} ${data['username'] ?? ''}'
+                  .toLowerCase()
+                  .contains(term);
             }).toList();
-            if (docs.isEmpty) return const Center(child: Text('لا توجد منشورات مطابقة'));
+            if (docs.isEmpty) {
+              return const Center(child: Text('لا توجد منشورات مطابقة'));
+            }
             return PageView.builder(
               scrollDirection: Axis.vertical,
               itemCount: docs.length,
@@ -486,7 +601,9 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
               filled: true,
               fillColor: Colors.black54,
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none),
             ),
           ),
         ),
@@ -498,7 +615,8 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
   final String username;
-  const PublicProfileScreen({super.key, required this.userId, required this.username});
+  const PublicProfileScreen(
+      {super.key, required this.userId, required this.username});
   @override
   State<PublicProfileScreen> createState() => _PublicProfileScreenState();
 }
@@ -516,7 +634,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Future<void> _loadFollowing() async {
     final me = FirebaseAuth.instance.currentUser;
     if (me == null) return;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(me.uid).collection('following').doc(widget.userId).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(me.uid)
+        .collection('following')
+        .doc(widget.userId)
+        .get();
     if (mounted) setState(() => _following = doc.exists);
   }
 
@@ -525,29 +648,53 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (me == null || me.uid == widget.userId) return;
     setState(() => _busy = true);
     final db = FirebaseFirestore.instance;
-    final following = db.collection('users').doc(me.uid).collection('following').doc(widget.userId);
-    final follower = db.collection('users').doc(widget.userId).collection('followers').doc(me.uid);
+    final followingRef = db
+        .collection('users')
+        .doc(me.uid)
+        .collection('following')
+        .doc(widget.userId);
+    final followerRef = db
+        .collection('users')
+        .doc(widget.userId)
+        .collection('followers')
+        .doc(me.uid);
     final myRef = db.collection('users').doc(me.uid);
     final targetRef = db.collection('users').doc(widget.userId);
+
     await db.runTransaction((tx) async {
       final target = await tx.get(targetRef);
       final mine = await tx.get(myRef);
-      final followers = (target.data()?['followersCount'] as num? ?? 0).toInt();
-      final followingCount = (mine.data()?['followingCount'] as num? ?? 0).toInt();
+      final followers =
+          (target.data()?['followersCount'] as num? ?? 0).toInt();
+      final followingCount =
+          (mine.data()?['followingCount'] as num? ?? 0).toInt();
       if (_following) {
-        tx.delete(following);
-        tx.delete(follower);
-        tx.update(targetRef, {'followersCount': followers > 0 ? followers - 1 : 0});
-        tx.update(myRef, {'followingCount': followingCount > 0 ? followingCount - 1 : 0});
+        tx.delete(followingRef);
+        tx.delete(followerRef);
+        tx.update(targetRef,
+            {'followersCount': followers > 0 ? followers - 1 : 0});
+        tx.update(myRef,
+            {'followingCount': followingCount > 0 ? followingCount - 1 : 0});
       } else {
-        tx.set(following, {'userId': widget.userId, 'createdAt': FieldValue.serverTimestamp()});
-        tx.set(follower, {'userId': me.uid, 'createdAt': FieldValue.serverTimestamp()});
+        tx.set(followingRef, {
+          'userId': widget.userId,
+          'createdAt': FieldValue.serverTimestamp()
+        });
+        tx.set(followerRef, {
+          'userId': me.uid,
+          'createdAt': FieldValue.serverTimestamp()
+        });
         tx.update(targetRef, {'followersCount': followers + 1});
         tx.update(myRef, {'followingCount': followingCount + 1});
       }
     });
+
     if (!_following) {
-      await db.collection('users').doc(widget.userId).collection('notifications').add({
+      await db
+          .collection('users')
+          .doc(widget.userId)
+          .collection('notifications')
+          .add({
         'title': 'متابع جديد',
         'body': '${me.displayName ?? 'مستخدم'} بدأ متابعتك',
         'type': 'follow',
@@ -573,7 +720,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       appBar: AppBar(title: Text('@${widget.username}')),
       body: Column(children: [
         const SizedBox(height: 20),
-        Text('@${widget.username}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text('@${widget.username}',
+            style:
+                const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         FilledButton(
           onPressed: _busy ? null : _toggleFollow,
@@ -584,16 +733,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: videos,
             builder: (_, snap) {
-              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
               return GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   crossAxisSpacing: 4,
                   mainAxisSpacing: 4,
                 ),
                 itemCount: snap.data!.docs.length,
                 itemBuilder: (_, i) {
-                  final u = snap.data!.docs[i].data()['downloadUrl'] as String? ?? '';
+                  final u =
+                      snap.data!.docs[i].data()['downloadUrl'] as String? ??
+                          '';
                   return u.isEmpty
                       ? const ColoredBox(color: Colors.grey)
                       : Image.network(u, fit: BoxFit.cover);
@@ -611,7 +765,11 @@ class FirestoreVideoCard extends StatefulWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
   final void Function(String, bool) onComment;
   final Future<void> Function(String, bool) onLike;
-  const FirestoreVideoCard({super.key, required this.doc, required this.onComment, required this.onLike});
+  const FirestoreVideoCard(
+      {super.key,
+      required this.doc,
+      required this.onComment,
+      required this.onLike});
   @override
   State<FirestoreVideoCard> createState() => _FirestoreVideoCardState();
 }
@@ -630,25 +788,38 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
   Future<void> _loadLike() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final snap = await widget.doc.reference.collection('likes').doc(uid).get();
+    final snap =
+        await widget.doc.reference.collection('likes').doc(uid).get();
     if (mounted) setState(() => _liked = snap.exists);
   }
 
   Future<void> _loadSaved() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final snap = await FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id).get();
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('savedVideos')
+        .doc(widget.doc.id)
+        .get();
     if (mounted) setState(() => _saved = snap.exists);
   }
 
   Future<void> _toggleSaved() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final ref = FirebaseFirestore.instance.collection('users').doc(uid).collection('savedVideos').doc(widget.doc.id);
+    final ref = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('savedVideos')
+        .doc(widget.doc.id);
     if (_saved) {
       await ref.delete();
     } else {
-      await ref.set({'videoId': widget.doc.id, 'createdAt': FieldValue.serverTimestamp()});
+      await ref.set({
+        'videoId': widget.doc.id,
+        'createdAt': FieldValue.serverTimestamp()
+      });
     }
     if (mounted) setState(() => _saved = !_saved);
   }
@@ -662,7 +833,9 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
     final comments = (data['commentsCount'] as num? ?? 0).toInt();
     return Stack(fit: StackFit.expand, children: [
       if (url.isEmpty)
-        const ColoredBox(color: Colors.black, child: Center(child: Icon(Icons.play_circle, size: 80)))
+        const ColoredBox(
+            color: Colors.black,
+            child: Center(child: Icon(Icons.play_circle, size: 80)))
       else if (isImage)
         Image.network(url, fit: BoxFit.cover)
       else
@@ -691,12 +864,15 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
                 ),
               ),
             ),
-            child: Text('@${data['username'] ?? 'user'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            child: Text('@${data['username'] ?? 'user'}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16)),
           ),
           const SizedBox(height: 5),
           Text(data['caption'] ?? ''),
           const SizedBox(height: 5),
-          Text('♫ ${data['selectedSong'] ?? ''}', style: const TextStyle(fontSize: 12)),
+          Text('♫ ${data['selectedSong'] ?? ''}',
+              style: const TextStyle(fontSize: 12)),
         ]),
       ),
       Positioned(
@@ -704,7 +880,8 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
         bottom: 70,
         child: Column(children: [
           IconButton(
-            icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.red : Colors.white, size: 38),
+            icon: Icon(_liked ? Icons.favorite : Icons.favorite_border,
+                color: _liked ? Colors.red : Colors.white, size: 38),
             onPressed: () async {
               await widget.onLike(widget.doc.id, _liked);
               if (mounted) setState(() => _liked = !_liked);
@@ -714,7 +891,8 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
           const SizedBox(height: 12),
           IconButton(
             icon: const Icon(Icons.comment, size: 34),
-            onPressed: () => widget.onComment(widget.doc.id, data['commentsAllowed'] != false),
+            onPressed: () => widget.onComment(
+                widget.doc.id, data['commentsAllowed'] != false),
           ),
           Text('$comments'),
           const SizedBox(height: 12),
@@ -723,7 +901,8 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
           const SizedBox(height: 12),
           IconButton(
             onPressed: _toggleSaved,
-            icon: Icon(_saved ? Icons.bookmark : Icons.bookmark_border, size: 32),
+            icon: Icon(_saved ? Icons.bookmark : Icons.bookmark_border,
+                size: 32),
           ),
           const Text('حفظ', style: TextStyle(fontSize: 12)),
         ]),
@@ -732,7 +911,7 @@ class _FirestoreVideoCardState extends State<FirestoreVideoCard> {
   }
 }
 
-// 4. استوديو التصوير الحقيقي (كاميرا + صورة وفيديو وبث مباشر + معرض + أغاني وتحكم بالصوت)
+// 4. استوديو التصوير الحقيقي
 class CameraStudioScreen extends StatefulWidget {
   const CameraStudioScreen({super.key});
 
@@ -743,7 +922,7 @@ class CameraStudioScreen extends StatefulWidget {
 class _CameraStudioScreenState extends State<CameraStudioScreen> {
   CameraController? _controller;
   bool _isCameraInitialized = false;
-  String _selectedMode = 'فيديو'; // (صورة، فيديو، بث مباشر)
+  String _selectedMode = 'فيديو';
   String _selectedFilter = 'بدون فلتر';
   bool _isRecording = false;
 
@@ -773,14 +952,14 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
     }
   }
 
-  // نقفل الكاميرا قبل فتح البث عشان Agora يقدر يستخدمها، وبعدين نفتحها تاني
   Future<void> _openLiveStream() async {
     final old = _controller;
     _controller = null;
     if (mounted) setState(() => _isCameraInitialized = false);
     await old?.dispose();
     if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => const LiveStreamScreen()));
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (context) => const LiveStreamScreen()));
     if (mounted) _initCamera();
   }
 
@@ -833,645 +1012,37 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
                     ? Colors.orange.withOpacity(0.15)
                     : Colors.transparent,
           ),
-          // أزرار الفلاتر الجانبية
           Positioned(
             top: 50,
             right: 16,
             child: Column(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.face, color: Colors.white, size: 32),
+                  icon: const Icon(Icons.face,
+                      color: Colors.white, size: 32),
                   onPressed: () {
                     setState(() {
-                      _selectedFilter = _selectedFilter == 'فلتر جمالي دافئ' ? 'فلتر نيون أزرق' : 'فلتر جمالي دافئ';
+                      _selectedFilter =
+                          _selectedFilter == 'فلتر جمالي دافئ'
+                              ? 'فلتر نيون أزرق'
+                              : 'فلتر جمالي دافئ';
                     });
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تفعيل: $_selectedFilter ✨')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('تم تفعيل: $_selectedFilter ✨')));
                   },
                 ),
-                const Text('فلاتر الوجه', style: TextStyle(color: Colors.white, fontSize: 10)),
+                const Text('فلاتر الوجه',
+                    style: TextStyle(color: Colors.white, fontSize: 10)),
               ],
             ),
           ),
-          // زر التقاط الصورة / الفيديو / البث السفلي مع خيار المعرض والوضع
           Positioned(
             bottom: 30,
             left: 0,
             right: 0,
             child: Column(
               children: [
-                // التبديل بين الأوضاع (صورة، فيديو، بث مباشر)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: ['صورة', 'فيديو', 'بث مباشر'].map((mode) {
-                    final isSelected = _selectedMode == mode;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedMode = mode),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          mode,
-                          style: TextStyle(
-                            color: isSelected ? Colors.amber : Colors.white,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // خانة المعرض بجانب زر التصوير
-                    IconButton(
-                      icon: const Icon(Icons.photo_library, color: Colors.white, size: 36),
-                      onPressed: _pickFromGallery,
-                      tooltip: 'اختر من المعرض',
-                    ),
-                    // زر الالتقاط الأساسي
-                    GestureDetector(
-                      onTap: () async {
-                        if (_selectedMode == 'بث مباشر') {
-                          await _openLiveStream();
-                          return;
-                        }
-                        if (_selectedMode == 'صورة') {
-                          final image = await _controller!.takePicture();
-                          if (mounted) {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => UploadPostScreen(mediaPath: image.path)));
-                          }
-                        } else {
-                          try {
-                            if (_isRecording) {
-                              final file = await _controller!.stopVideoRecording();
-                              setState(() => _isRecording = false);
-                              if (mounted) {
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => UploadPostScreen(mediaPath: file.path)));
-                              }
-                            } else {
-                              await _controller!.startVideoRecording();
-                              setState(() => _isRecording = true);
-                            }
-                          } catch (e) {
-                            final picker = ImagePicker();
-                            final picked = await picker.pickVideo(source: ImageSource.camera);
-                            if (picked != null && mounted) {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => UploadPostScreen(mediaPath: picked.path)));
-                            }
-                          }
-                        }
-                      },
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          color: _isRecording ? Colors.red : Colors.redAccent,
-                        ),
-                        child: Center(
-                          child: Icon(
-                            _selectedMode == 'بث مباشر'
-                                ? Icons.live_tv
-                                : _selectedMode == 'صورة'
-                                    ? Icons.camera
-                                    : (_isRecording ? Icons.stop : Icons.fiber_manual_record),
-                            color: Colors.white,
-                            size: 40,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 36), // توازن الـ Row
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// شاشة معاينة الفيديو/الصورة قبل النشر مع خانة الأغاني والتحكم في مستويات الصوت
-class UploadPostScreen extends StatefulWidget {
-  final String mediaPath;
-  const UploadPostScreen({super.key, required this.mediaPath});
-
-  @override
-  State<UploadPostScreen> createState() => _UploadPostScreenState();
-}
-
-class _UploadPostScreenState extends State<UploadPostScreen> {
-  final TextEditingController _captionController = TextEditingController();
-  bool _commentsAllowed = true;
-  String _selectedSong = 'أغنية الحماس والترند 🎵'; // أغنية افتراضية تليق بالصورة/الفيديو تلقائياً
-  double _originalSoundVolume = 0.8;
-  double _addedSongVolume = 0.5;
-
-  void _insertText(String textToInsert) {
-    final currentText = _captionController.text;
-    final selection = _captionController.selection;
-    if (selection.start >= 0) {
-      final newText = currentText.replaceRange(selection.start, selection.end, textToInsert);
-      _captionController.text = newText;
-      _captionController.selection = TextSelection.collapsed(offset: selection.start + textToInsert.length);
-    } else {
-      _captionController.text = '$currentText $textToInsert';
-    }
-  }
-
-  void _openSongsPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey[900],
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final List<String> availableSongs = [
-              'أغنية الحماس والترند 🎵',
-              'ريمكس رقصة تيك توك 🔥',
-              'موسيقى هادئة ورومانسية 🎸',
-              'إيقاع سريع ورائع ⚡',
-            ];
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('اختر الأغنية أو الموسيقى', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 150,
-                    child: ListView.builder(
-                      itemCount: availableSongs.length,
-                      itemBuilder: (context, index) {
-                        final song = availableSongs[index];
-                        return ListTile(
-                          title: Text(song, style: const TextStyle(color: Colors.white)),
-                          trailing: _selectedSong == song ? const Icon(Icons.check, color: Colors.amber) : null,
-                          onTap: () {
-                            setState(() => _selectedSong = song);
-                            setModalState(() {});
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const Divider(color: Colors.grey),
-                  const Text('التحكم في مستويات الصوت 🎚️', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 5),
-                  Row(
-                    children: [
-                      const Text('الصوت الأصلي', style: TextStyle(color: Colors.white, fontSize: 12)),
-                      Expanded(
-                        child: Slider(
-                          value: _originalSoundVolume,
-                          min: 0,
-                          max: 1,
-                          activeColor: Colors.redAccent,
-                          onChanged: (val) {
-                            setState(() => _originalSoundVolume = val);
-                            setModalState(() {});
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      const Text('الصوت المضاف', style: TextStyle(color: Colors.white, fontSize: 12)),
-                      Expanded(
-                        child: Slider(
-                          value: _addedSongVolume,
-                          min: 0,
-                          max: 1,
-                          activeColor: Colors.amber,
-                          onChanged: (val) {
-                            setState(() => _addedSongVolume = val);
-                            setModalState(() {});
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _publishVideo() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل الدخول أولًا')));
-      return;
-    }
-    setState(() {});
-    try {
-      final id = FirebaseFirestore.instance.collection('videos').doc().id;
-      final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') ||
-          widget.mediaPath.toLowerCase().endsWith('.jpeg') ||
-          widget.mediaPath.toLowerCase().endsWith('.png');
-      final ext = isImage ? 'jpg' : 'mp4';
-      final ref = FirebaseStorage.instance.ref('videos/${user.uid}/$id.$ext');
-      await ref.putFile(File(widget.mediaPath), SettableMetadata(contentType: isImage ? 'image/jpeg' : 'video/mp4'));
-      final url = await ref.getDownloadURL();
-      await FirebaseFirestore.instance.collection('videos').doc(id).set({
-        'id': id,
-        'ownerId': user.uid,
-        'username': user.displayName ?? user.email?.split('@').first ?? 'saif_creator',
-        'caption': _captionController.text.trim().isEmpty ? 'منشور جديد 🔥' : _captionController.text.trim(),
-        'commentsAllowed': _commentsAllowed,
-        'selectedSong': _selectedSong,
-        'downloadUrl': url,
-        'mediaType': isImage ? 'image' : 'video',
-        'createdAt': FieldValue.serverTimestamp(),
-        'likesCount': 0,
-        'commentsCount': 0,
-      });
-      if (!mounted) return;
-      Navigator.popUntil(context, (route) => route.isFirst);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع ونشر المحتوى على Firebase بنجاح'), backgroundColor: Colors.green));
-    } on FirebaseException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل رفع المحتوى: ${e.message ?? e.code}')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e')));
-    }
-  }
-
-  @override
-  void dispose() {
-    _captionController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('معاينة ونشر المحتوى'),
-        actions: [
-          // زر تغيير الأغنية في أعلى الشاشة
-          IconButton(
-            icon: const Icon(Icons.music_note, color: Colors.amber),
-            tooltip: 'تغيير الأغنية',
-            onPressed: _openSongsPicker,
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.grey[850], borderRadius: BorderRadius.circular(10)),
-              child: Row(
-                children: [
-                  const Icon(Icons.music_note, color: Colors.amber),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text('الأغنية الحالية: $_selectedSong', style: const TextStyle(color: Colors.white))),
-                  TextButton(onPressed: _openSongsPicker, child: const Text('تعديل الصوت', style: TextStyle(color: Colors.amber))),
-                ],
-              ),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _captionController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'اكتب وصف الفيديو الخاص بك...',
-                filled: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[850]),
-                  icon: const Icon(Icons.tag, color: Colors.amber),
-                  label: const Text('هاشتاج #'),
-                  onPressed: () => _insertText(' #ترند_تيك_توك '),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[850]),
-                  icon: const Icon(Icons.alternate_email, color: Colors.blueAccent),
-                  label: const Text('إشارة @'),
-                  onPressed: () => _insertText(' @صديقي '),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            SwitchListTile(
-              title: const Text('السماح بالتعليقات'),
-              value: _commentsAllowed,
-              activeColor: Colors.redAccent,
-              onChanged: (val) => setState(() => _commentsAllowed = val),
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(14)),
-              onPressed: _publishVideo,
-              child: const Text('نشر الآن 🚀', style: TextStyle(fontSize: 16)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// 5. صفحة الرسائل والإشعارات الحقيقية
-class InboxScreen extends StatelessWidget {
-  const InboxScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
-    final stream = FirebaseFirestore.instance.collection('users').doc(uid).collection('notifications').orderBy('createdAt', descending: true).snapshots();
-    return Scaffold(
-      appBar: AppBar(title: const Text('الإشعارات')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: stream,
-        builder: (_, snapshot) {
-          if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}'));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          if (snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد إشعارات بعد'));
-          return ListView(
-            children: snapshot.data!.docs.map((doc) {
-              final data = doc.data();
-              return ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.notifications)),
-                title: Text(data['title'] ?? 'إشعار جديد'),
-                subtitle: Text(data['body'] ?? ''),
-              );
-            }).toList(),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// 6. صفحة الملف الشخصي المرتبطة بـ Firestore
-class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
-    final videos = FirebaseFirestore.instance.collection('videos').where('ownerId', isEqualTo: user.uid).orderBy('createdAt', descending: true).snapshots();
-    final profile = FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('حسابي'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
-          ),
-        ],
-      ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: profile,
-        builder: (_, profileSnap) {
-          final data = profileSnap.data?.data() ?? {};
-          return Column(children: [
-            const SizedBox(height: 15),
-            CircleAvatar(
-              radius: 45,
-              backgroundImage: user.photoURL == null ? null : NetworkImage(user.photoURL!),
-              child: user.photoURL == null ? const Icon(Icons.person, size: 55) : null,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              data['displayName'] ?? user.displayName ?? user.email ?? 'مستخدم',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 5),
-            Text(user.email ?? '', style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 15),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text('المتابعون: ${data['followersCount'] ?? 0}'),
-              const SizedBox(width: 24),
-              Text('المتابَعون: ${data['followingCount'] ?? 0}'),
-            ]),
-            const SizedBox(height: 15),
-            const Divider(),
-            const Text('منشوراتي', style: TextStyle(color: Colors.grey)),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: videos,
-                builder: (_, snap) {
-                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                  final docs = snap.data!.docs;
-                  if (docs.isEmpty) return const Center(child: Text('لم تنشر شيئًا بعد'));
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(5),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 5,
-                      mainAxisSpacing: 5,
-                    ),
-                    itemCount: docs.length,
-                    itemBuilder: (_, i) {
-                      final url = docs[i].data()['downloadUrl'] as String? ?? '';
-                      return url.isEmpty
-                          ? const ColoredBox(color: Colors.grey)
-                          : Image.network(url, fit: BoxFit.cover);
-                    },
-                  );
-                },
-              ),
-            ),
-          ]);
-        },
-      ),
-    );
-  }
-}
-
-// 7. صفحة الإعدادات (المعلومات الشخصية، الرصيد، وتسجيل الخروج في الأسفل)
-class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الإعدادات والخصوصية')),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.person_outline, color: Colors.white),
-            title: const Text('المعلومات الشخصية'),
-            subtitle: Text('الاسم: ${AppData.userName}\nالرقم: ${AppData.userPhone}\nالبريد: ${AppData.userEmail}'),
-            isThreeLine: true,
-          ),
-          const Divider(color: Colors.grey),
-          ListTile(
-            leading: const Icon(Icons.account_balance_wallet, color: Colors.amber),
-            title: const Text('الرصيد والأرباح'),
-            subtitle: Text('رصيدك الحالي: ${AppData.userBalance} عملة 💰'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('رصيد الحساب'),
-                  content: Text('لديك الآن ${AppData.userBalance} عملة من أرباح البثوث والفيديوهات.'),
-                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً'))],
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.grey),
-          const SizedBox(height: 40),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.all(12)),
-              icon: const Icon(Icons.logout, color: Colors.white),
-              label: const Text('تسجيل الخروج من الحساب', style: TextStyle(color: Colors.white, fontSize: 16)),
-              onPressed: () {
-                AppData.isLoggedIn = false;
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const AuthScreen()),
-                  (route) => false,
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// 8. البث المباشر عبر Agora (بدون Certificate - Testing mode)
-class LiveStreamScreen extends StatefulWidget {
-  const LiveStreamScreen({super.key});
-
-  @override
-  State<LiveStreamScreen> createState() => _LiveStreamScreenState();
-}
-
-class _LiveStreamScreenState extends State<LiveStreamScreen> {
-  RtcEngine? _engine;
-  bool _joined = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _startLive();
-  }
-
-  Future<void> _startLive() async {
-    try {
-      await [Permission.camera, Permission.microphone].request();
-      final engine = createAgoraRtcEngine();
-      _engine = engine;
-      await engine.initialize(const RtcEngineContext(
-        appId: agoraAppId,
-        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-      ));
-      engine.registerEventHandler(RtcEngineEventHandler(
-        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          if (mounted) setState(() => _joined = true);
-        },
-        onError: (ErrorCodeType err, String msg) {
-          if (mounted) setState(() => _error = 'Agora error: $err $msg');
-        },
-      ));
-      await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-      await engine.enableVideo();
-      await engine.startPreview();
-      await engine.joinChannel(
-        token: '007eJxTYDjX7Rn4LXbf/gyxPzbTHnRw/tnsInJ+1i/hBCb/ac1tSm4KDEmWppYpFoYmaZapBibJ5gaJiebJpimGFgYWSUkmxiZpEp+2ZDUEMjK42DEyMTJAIIjPwlCSWlzCwAAAWvwe1g==',
-        channelId: 'test',
-        uid: 0,
-        options: const ChannelMediaOptions(
-          clientRoleType: ClientRoleType.clientRoleBroadcaster,
-          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-        ),
-      );
-    } catch (e) {
-      if (mounted) setState(() => _error = 'تعذر بدء البث: $e');
-    }
-  }
-
-  @override
-  void dispose() {
-    final engine = _engine;
-    if (engine != null) {
-      engine.leaveChannel();
-      engine.release();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    Widget body;
-    if (_error != null) {
-      body = Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(_error!, textAlign: TextAlign.center)));
-    } else if (_joined && _engine != null) {
-      body = AgoraVideoView(
-        controller: VideoViewController(
-          rtcEngine: _engine!,
-          canvas: const VideoCanvas(uid: 0),
-        ),
-      );
-    } else {
-      body = const Center(child: CircularProgressIndicator());
-    }
-    return Scaffold(
-      appBar: AppBar(title: const Text('🔴 البث المباشر')),
-      body: body,
-    );
-  }
-}
-
-// 9. صفحة اكتشف الترندات
-class DiscoverScreen extends StatelessWidget {
-  const DiscoverScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('اكتشف الترندات')),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: 1.5,
-        ),
-        itemCount: 6,
-        itemBuilder: (context, index) => Container(
-          decoration: BoxDecoration(
-            color: Colors.grey[850],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Center(
-            child: Text(
-              '#هاشتاج_الترند_${index + 1} 🔥',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+                   
