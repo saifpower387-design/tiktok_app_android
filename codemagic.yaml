@@ -36,25 +36,6 @@ workflows:
               app.write_text(text)
           PY
 
-      - name: Add Agora permissions
-        script: |
-          python3 - <<'PY'
-          from pathlib import Path
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          text = manifest.read_text()
-          if 'RECORD_AUDIO' not in text:
-              perms = (
-                  '    <uses-permission android:name="android.permission.INTERNET"/>\n'
-                  '    <uses-permission android:name="android.permission.CAMERA"/>\n'
-                  '    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n'
-                  '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n'
-                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n'
-                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n'
-              )
-              text = text.replace('<application', perms + '    <application', 1)
-              manifest.write_text(text)
-          PY
-
       - name: Get packages
         script: flutter pub get
 
