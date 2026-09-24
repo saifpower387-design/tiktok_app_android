@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:camera/camera.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:video_player/video_player.dart';
+import 'dart:io';
 
 // قائمة عالمية لحفظ الفيديوهات المنشورة ديناميكياً
 class VideoItem {
@@ -9,6 +16,8 @@ class VideoItem {
   final String username;
   final bool commentsAllowed;
   final String selectedSong;
+  final String downloadUrl;
+  final String mediaType;
 
   VideoItem({
     required this.videoPath,
@@ -16,6 +25,8 @@ class VideoItem {
     required this.username,
     required this.commentsAllowed,
     required this.selectedSong,
+    this.downloadUrl = '',
+    this.mediaType = 'video',
   });
 }
 
@@ -31,6 +42,12 @@ class AppData {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  AppData.isLoggedIn = FirebaseAuth.instance.currentUser != null;
+  if (FirebaseAuth.instance.currentUser != null) {
+    AppData.userEmail = FirebaseAuth.instance.currentUser!.email ?? AppData.userEmail;
+    AppData.userName = FirebaseAuth.instance.currentUser!.displayName ?? AppData.userName;
+  }
   try {
     AppData.cameras = await availableCameras();
   } catch (e) {
@@ -70,67 +87,72 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
   bool _isLoading = false;
 
-  void _loginWithSocial(String providerName, Color themeColor) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.open_in_new, size: 50, color: themeColor),
-            const SizedBox(height: 15),
-            Text('جاري فتح تطبيق $providerName...', style: const TextStyle(color: Colors.white, fontSize: 16)),
-            const SizedBox(height: 15),
-            const CircularProgressIndicator(color: Colors.redAccent),
-            const SizedBox(height: 10),
-            const Text('يرجى تأكيد الصلاحية للمتابعة', style: TextStyle(color: Colors.grey, fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        Navigator.pop(context);
-        AppData.isLoggedIn = true;
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تم تسجيل الدخول عبر $providerName بنجاح! 🚀'), backgroundColor: Colors.green),
-        );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-        );
-      }
-    });
-  }
-
-  void _submitAuthForm() {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
+  Future<void> _loginWithSocial(String providerName, Color themeColor) async {
+    if (providerName != 'Google (Gmail)') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('من فضلك أدخل البريد وكلمة المرور')),
+        SnackBar(content: Text('تسجيل $providerName يحتاج إعداد OAuth الخاص به أولًا')),
       );
       return;
     }
-
     setState(() => _isLoading = true);
+    try {
+      final account = await GoogleSignIn().signIn();
+      if (account == null) return;
+      final auth = await account.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: auth.accessToken,
+        idToken: auth.idToken,
+      );
+      final result = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = result.user!;
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'uid': user.uid,
+        'email': user.email,
+        'displayName': user.displayName ?? 'مستخدم جديد',
+        'photoUrl': user.photoURL,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      AppData.isLoggedIn = true;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
+    } on FirebaseAuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل Google: ${e.message ?? e.code}')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تسجيل Google: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        AppData.isLoggedIn = true;
-        AppData.userEmail = email;
-        setState(() => _isLoading = false);
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-        );
-      }
-    });
+  Future<void> _submitAuthForm() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    if (email.isEmpty || password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل بريدًا صحيحًا وكلمة مرور من 6 أحرف على الأقل')));
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      final result = _isLogin
+          ? await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password)
+          : await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
+      final user = result.user!;
+      AppData.isLoggedIn = true;
+      AppData.userEmail = user.email ?? email;
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'uid': user.uid,
+        'email': user.email,
+        'displayName': user.displayName ?? email.split('@').first,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
+    } on FirebaseAuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تسجيل الدخول: ${e.message ?? e.code}')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -247,6 +269,33 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
+class RemoteVideo extends StatefulWidget {
+  final String url;
+  const RemoteVideo({super.key, required this.url});
+  @override
+  State<RemoteVideo> createState() => _RemoteVideoState();
+}
+
+class _RemoteVideoState extends State<RemoteVideo> {
+  late final VideoPlayerController _controller;
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) { if (mounted) setState(() {}); });
+  }
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    if (!_controller.value.isInitialized) return const Center(child: CircularProgressIndicator());
+    return GestureDetector(
+      onTap: () { setState(() { _controller.value.isPlaying ? _controller.pause() : _controller.play(); }); },
+      child: FittedBox(fit: BoxFit.cover, child: SizedBox(width: _controller.value.size.width, height: _controller.value.size.height, child: VideoPlayer(_controller))),
+    );
+  }
+}
+
 // 3. شاشة الفيديوهات الرئيسية مع خانة بحث علوية
 class VideoFeedScreen extends StatefulWidget {
   const VideoFeedScreen({super.key});
@@ -321,12 +370,14 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                     return Stack(
                       fit: StackFit.expand,
                       children: [
-                        Container(
-                          color: Colors.grey[900],
-                          child: const Center(
-                            child: Icon(Icons.play_circle_fill, size: 80, color: Colors.redAccent),
-                          ),
-                        ),
+                        video.downloadUrl.isNotEmpty && video.mediaType == 'image'
+                            ? Image.network(video.downloadUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black))
+                            : video.downloadUrl.isNotEmpty && video.mediaType == 'video'
+                                ? RemoteVideo(url: video.downloadUrl)
+                                : Container(
+                                    color: Colors.grey[900],
+                                    child: const Center(child: Icon(Icons.play_circle_fill, size: 80, color: Colors.redAccent)),
+                                  ),
                         Positioned(
                           left: 15,
                           bottom: 80,
@@ -730,19 +781,38 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
     );
   }
 
-  void _publishVideo() {
-    final newVideo = VideoItem(
-      videoPath: widget.mediaPath,
-      caption: _captionController.text.trim().isEmpty ? 'فيديو جديد على تيك توك 🔥' : _captionController.text.trim(),
-      username: 'saif_creator',
-      commentsAllowed: _commentsAllowed,
-      selectedSong: _selectedSong,
-    );
-
-    AppData.publishedVideos.insert(0, newVideo);
-
-    Navigator.popUntil(context, (route) => route.isFirst);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نشر الفيديو بنجاح وظهر في ملفك الشخصي! 🚀'), backgroundColor: Colors.green));
+  Future<void> _publishVideo() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل الدخول أولًا'))); return; }
+    setState(() {});
+    try {
+      final id = FirebaseFirestore.instance.collection('videos').doc().id;
+      final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') || widget.mediaPath.toLowerCase().endsWith('.jpeg') || widget.mediaPath.toLowerCase().endsWith('.png');
+      final ext = isImage ? 'jpg' : 'mp4';
+      final ref = FirebaseStorage.instance.ref('videos/${user.uid}/$id.$ext');
+      await ref.putFile(File(widget.mediaPath), SettableMetadata(contentType: isImage ? 'image/jpeg' : 'video/mp4'));
+      final url = await ref.getDownloadURL();
+      await FirebaseFirestore.instance.collection('videos').doc(id).set({
+        'id': id,
+        'ownerId': user.uid,
+        'username': user.displayName ?? user.email?.split('@').first ?? 'saif_creator',
+        'caption': _captionController.text.trim().isEmpty ? 'منشور جديد 🔥' : _captionController.text.trim(),
+        'commentsAllowed': _commentsAllowed,
+        'selectedSong': _selectedSong,
+        'downloadUrl': url,
+        'mediaType': isImage ? 'image' : 'video',
+        'createdAt': FieldValue.serverTimestamp(),
+        'likesCount': 0,
+        'commentsCount': 0,
+      });
+      if (!mounted) return;
+      Navigator.popUntil(context, (route) => route.isFirst);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع ونشر المحتوى على Firebase بنجاح'), backgroundColor: Colors.green));
+    } on FirebaseException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل رفع المحتوى: ${e.message ?? e.code}')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e')));
+    }
   }
 
   @override
