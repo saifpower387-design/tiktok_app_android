@@ -1,61 +1,45 @@
 workflows:
   android-workflow:
-    name: ST Video App Android
+    name: ST Video Android Firebase
     instance_type: mac_mini_m1
-
     environment:
       flutter: stable
-
     scripts:
       - name: Create Android project
         script: |
           rm -rf android
           flutter create . --platforms=android
 
-      - name: Configure Firebase for Android
+      - name: Configure Firebase Android
         script: |
-          test -f google-services.json || {
-            echo "ERROR: google-services.json is missing from project root"
-            exit 1
-          }
-
+          test -f google-services.json || { echo "google-services.json is missing"; exit 1; }
           cp google-services.json android/app/google-services.json
-
           python3 - <<'PY'
           from pathlib import Path
-
-          settings = Path("android/settings.gradle")
+          settings = Path('android/settings.gradle')
           text = settings.read_text()
-
           if 'com.google.gms.google-services' not in text:
               text = text.replace(
                   'plugins {',
-                  'plugins {\n'
-                  '    id "com.google.gms.google-services" version "4.4.2" apply false',
-                  1
+                  'plugins {\n    id "com.google.gms.google-services" version "4.4.2" apply false',
+                  1,
               )
               settings.write_text(text)
-
-          app = Path("android/app/build.gradle")
+          app = Path('android/app/build.gradle')
           text = app.read_text()
-
           if 'com.google.gms.google-services' not in text:
               text = text.replace(
                   'plugins {',
-                  'plugins {\n'
-                  '    id "com.google.gms.google-services"',
-                  1
+                  'plugins {\n    id "com.google.gms.google-services"',
+                  1,
               )
               app.write_text(text)
           PY
 
-      - name: Get Flutter packages
-        script: |
-          flutter pub get
+      - name: Get packages
+        script: flutter pub get
 
-      - name: Build APK
-        script: |
-          flutter build apk --debug
-
+      - name: Build debug APK
+        script: flutter build apk --debug
     artifacts:
       - build/app/outputs/flutter-apk/app-debug.apk
