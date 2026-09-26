@@ -163,27 +163,46 @@ workflows:
 
       - name: Force iris_method_channel compileSdk 36
         script: |
-          set -e
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
 
-          iris_files=$(find "$HOME/.pub-cache" -type f \
-            \( -path "*/iris_method_channel-*/android/build.gradle" \
-            -o -path "*/iris_method_channel-*/android/build.gradle.kts" \) \
-            -print)
+          files = list(
+              Path.home().glob(
+                  '.pub-cache/hosted/**/iris_method_channel-*/android/build.gradle*'
+              )
+          )
 
-          if [ -z "$iris_files" ]; then
-            echo "iris_method_channel Gradle file not found"
-            exit 1
-          fi
+          if not files:
+              raise SystemExit('iris_method_channel Gradle file not found')
 
-          while IFS= read -r file; do
-            if [[ "$file" == *.kts ]]; then
-              sed -i -E 's/^([[:space:]]*)compileSdk[[:space:]]*=.*/\1compileSdk = 36/' "$file"
-            else
-              sed -i -E 's/^([[:space:]]*)compileSdkVersion[[:space:]].*/\1compileSdkVersion 36/' "$file"
-            fi
-            echo "Updated iris_method_channel: $file"
-            grep -n "compileSdk" "$file"
-          done <<< "$iris_files"
+          for path in files:
+              text = path.read_text()
+
+              if path.suffix == '.kts':
+                  updated = re.sub(
+                      r'(?m)^(\s*)compileSdk\s*=.*$',
+                      r'\1compileSdk = 36',
+                      text,
+                  )
+              else:
+                  updated = re.sub(
+                      r'(?m)^(\s*)compileSdkVersion\s+.*$',
+                      r'\1compileSdkVersion 36',
+                      text,
+                  )
+
+              if updated == text:
+                  raise SystemExit(
+                      f'Could not update compileSdk in {path}'
+                  )
+
+              path.write_text(updated)
+              print(f'Updated iris_method_channel: {path}')
+              for line_number, line in enumerate(updated.splitlines(), 1):
+                  if 'compileSdk' in line:
+                      print(f'{line_number}: {line}')
+          PY
 
       - name: Build debug APK
         script: flutter build apk --debug
