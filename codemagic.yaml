@@ -161,6 +161,30 @@ workflows:
               raise SystemExit('Agora compileSdk was not changed; inspect the package Gradle file')
           PY
 
+      - name: Force iris_method_channel compileSdk 36
+        script: |
+          set -e
+
+          iris_files=$(find "$HOME/.pub-cache" -type f \
+            \( -path "*/iris_method_channel-*/android/build.gradle" \
+            -o -path "*/iris_method_channel-*/android/build.gradle.kts" \) \
+            -print)
+
+          if [ -z "$iris_files" ]; then
+            echo "iris_method_channel Gradle file not found"
+            exit 1
+          fi
+
+          while IFS= read -r file; do
+            if [[ "$file" == *.kts ]]; then
+              sed -i -E 's/^([[:space:]]*)compileSdk[[:space:]]*=.*/\1compileSdk = 36/' "$file"
+            else
+              sed -i -E 's/^([[:space:]]*)compileSdkVersion[[:space:]].*/\1compileSdkVersion 36/' "$file"
+            fi
+            echo "Updated iris_method_channel: $file"
+            grep -n "compileSdk" "$file"
+          done <<< "$iris_files"
+
       - name: Build debug APK
         script: flutter build apk --debug
     artifacts:
