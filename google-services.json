@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "67126189193",
+    "project_id": "st-video-app",
+    "storage_bucket": "st-video-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:67126189193:android:af2fcb9415d3e4741e7a58",
+        "android_client_info": {
+          "package_name": "com.example.tiktok_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "67126189193-akc65ebuqfnm9988212nbt47bqk061ul.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwmjPTm0i7NOJqxcx3ytRNMSCJ-7y0Kws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "67126189193-akc65ebuqfnm9988212nbt47bqk061ul.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

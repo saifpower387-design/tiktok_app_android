@@ -1,0 +1,128 @@
+workflows:
+  android-workflow:
+    name: ST Video Android Firebase
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+    scripts:
+      - name: Create Android project
+        script: |
+          rm -rf android
+          flutter create . --platforms=android
+
+      - name: Fix Gradle wrapper version
+        script: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          wrapper = Path('android/gradle/wrapper/gradle-wrapper.properties')
+          if not wrapper.exists():
+              raise SystemExit(f'Missing Gradle wrapper: {wrapper}')
+
+          text = wrapper.read_text()
+          import re
+          text, count = re.subn(
+              r'distributionUrl=.*',
+              'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.3.1-bin.zip',
+              text,
+          )
+          if count != 1:
+              raise SystemExit('Could not update Gradle distributionUrl')
+          wrapper.write_text(text)
+          print('Gradle wrapper set to 9.3.1')
+          PY
+
+      - name: Update Android SDK versions in build.gradle
+        script: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          
+          for gradle_path in Path('android/app').glob('build.gradle*'):
+              content = gradle_path.read_text()
+              content = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 36', content)
+              content = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 36', content)
+              content = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', content)
+              gradle_path.write_text(content)
+              print(f"Successfully updated {gradle_path}")
+          PY
+
+      - name: Configure Firebase Android
+        script: |
+          test -f google-services.json || { echo "google-services.json is missing"; exit 1; }
+          cp google-services.json android/app/google-services.json
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def first_existing(*names):
+              for n in names:
+                  p = Path(n)
+                  if p.exists():
+                      return p
+              raise SystemExit("Missing gradle file: " + " or ".join(names))
+
+          def add_plugin(path, groovy_line, kts_line):
+              text = path.read_text()
+              if 'com.google.gms.google-services' in text:
+                  return
+              line = kts_line if path.suffix == '.kts' else groovy_line
+              text = text.replace('plugins {', 'plugins {\n' + line, 1)
+              path.write_text(text)
+
+          add_plugin(
+              first_existing('android/settings.gradle.kts', 'android/settings.gradle'),
+              '    id "com.google.gms.google-services" version "4.4.2" apply false',
+              '    id("com.google.gms.google-services") version "4.4.2" apply false',
+          )
+          add_plugin(
+              first_existing('android/app/build.gradle.kts', 'android/app/build.gradle'),
+              '    id "com.google.gms.google-services"',
+              '    id("com.google.gms.google-services")',
+          )
+          PY
+
+      - name: Add Agora permissions
+        script: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          if 'RECORD_AUDIO' not in text:
+              perms = (
+                  '    <uses-permission android:name="android.permission.INTERNET"/>\n'
+                  '    <uses-permission android:name="android.permission.CAMERA"/>\n'
+                  '    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n'
+                  '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n'
+                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n'
+                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n'
+              )
+              text = text.replace('<application', perms + '    <application', 1)
+              manifest.write_text(text)
+          PY
+
+      - name: Get packages
+        script: flutter pub get
+
+      - name: Fix Agora compileSdk
+        script: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          candidates = list(Path.home().glob('.pub-cache/hosted/**/agora_rtc_engine-*/android/build.gradle*'))
+          if not candidates:
+              raise SystemExit('Could not find Agora Android Gradle file')
+
+          for path in candidates:
+              text = path.read_text()
+              updated = re.sub(r'compileSdk(?:Version)?\s*(?:=\s*)?31\b', 'compileSdk = 36', text)
+              if updated == text:
+                  updated = re.sub(r'compileSdk(?:Version)?\s*(?:=\s*)?flutter\.compileSdkVersion\b', 'compileSdk = 36', text)
+              path.write_text(updated)
+              print(f'Updated Agora compileSdk: {path}')
+          PY
+
+      - name: Build debug APK
+        script: flutter build apk --debug
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk
