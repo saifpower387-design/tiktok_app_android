@@ -2,141 +2,103 @@ workflows:
   android-workflow:
     name: ST Video Android Firebase
     instance_type: mac_mini_m1
-
     environment:
       flutter: stable
-
     scripts:
       - name: Create Android project
         script: |
           rm -rf android
           flutter create . --platforms=android
 
+      - name: Generate Google OAuth fingerprints
+        script: |
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          echo "Copy these values to Firebase Project settings:" 
+          keytool -list -v \
+            -alias androiddebugkey \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -keypass android | grep -E "SHA1:|SHA256:"
+
       - name: Fix Gradle wrapper version
         script: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          wrapper = Path("android/gradle/wrapper/gradle-wrapper.properties")
-
+          wrapper = Path('android/gradle/wrapper/gradle-wrapper.properties')
           if not wrapper.exists():
-              raise SystemExit(f"Missing Gradle wrapper: {wrapper}")
+              raise SystemExit(f'Missing Gradle wrapper: {wrapper}')
 
           text = wrapper.read_text()
-
+          import re
           text, count = re.subn(
-              r"distributionUrl=.*",
-              "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.3.1-bin.zip",
+              r'distributionUrl=.*',
+              'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.3.1-bin.zip',
               text,
-           )
-
+          )
           if count != 1:
-              raise SystemExit("Could not update Gradle distributionUrl")
-
+              raise SystemExit('Could not update Gradle distributionUrl')
           wrapper.write_text(text)
-          print("Gradle wrapper set to 9.3.1")
+          print('Gradle wrapper set to 9.3.1')
           PY
 
-      - name: Update Android SDK versions
+      - name: Update Android SDK versions in build.gradle
         script: |
           python3 - <<'PY'
           import re
           from pathlib import Path
-
-          for gradle_path in Path("android/app").glob("build.gradle*"):
+          
+          for gradle_path in Path('android/app').glob('build.gradle*'):
               content = gradle_path.read_text()
-
-              if gradle_path.suffix == ".kts":
-                  content = re.sub(
-                      r"compileSdk\s*=.*",
-                      "compileSdk = 36",
-                      content,
-                  )
-                  content = re.sub(
-                      r"targetSdk\s*=.*",
-                      "targetSdk = 36",
-                      content,
-                  )
-                  content = re.sub(
-                      r"minSdk\s*=.*",
-                      "minSdk = 24",
-                      content,
-                  )
-              else:
-                  content = re.sub(
-                      r"compileSdkVersion\s+.*",
-                      "compileSdkVersion 36",
-                      content,
-                  )
-                  content = re.sub(
-                      r"targetSdkVersion\s+.*",
-                      "targetSdkVersion 36",
-                      content,
-                  )
-                  content = re.sub(
-                      r"minSdkVersion\s+.*",
-                      "minSdkVersion 24",
-                      content,
-                  )
-
+              content = re.sub(r'compileSdk(Version)?\s*=?\s*.*', 'compileSdk = 36', content)
+              content = re.sub(r'targetSdk(Version)?\s*=?\s*.*', 'targetSdk = 36', content)
+              content = re.sub(r'minSdk(Version)?\s*=?\s*.*', 'minSdk = 24', content)
               gradle_path.write_text(content)
-              print(f"Updated Android SDK versions in {gradle_path}")
+              print(f"Successfully updated {gradle_path}")
           PY
 
       - name: Configure Firebase Android
         script: |
-          test -f google-services.json || {
-            echo "google-services.json is missing"
-            exit 1
-          }
-
-          mkdir -p android/app
+          test -f google-services.json || { echo "google-services.json is missing"; exit 1; }
           cp google-services.json android/app/google-services.json
-
           python3 - <<'PY'
           from pathlib import Path
 
           def first_existing(*names):
-              for name in names:
-                  path = Path(name)
-                  if path.exists():
-                      return path
-
-              raise SystemExit(
-                  "Missing gradle file: " + " or ".join(names)
-              )
+              for n in names:
+                  p = Path(n)
+                  if p.exists():
+                      return p
+              raise SystemExit("Missing gradle file: " + " or ".join(names))
 
           def add_plugin(path, groovy_line, kts_line):
               text = path.read_text()
-
-              if "com.google.gms.google-services" in text:
+              if 'com.google.gms.google-services' in text:
                   return
-
-              line = kts_line if path.suffix == ".kts" else groovy_line
-
-              text = text.replace(
-                  "plugins {",
-                  "plugins {\n" + line,
-                  1,
-              )
-
+              line = kts_line if path.suffix == '.kts' else groovy_line
+              text = text.replace('plugins {', 'plugins {\n' + line, 1)
               path.write_text(text)
 
           add_plugin(
-              first_existing(
-                  "android/settings.gradle.kts",
-                  "android/settings.gradle",
-              ),
+              first_existing('android/settings.gradle.kts', 'android/settings.gradle'),
               '    id "com.google.gms.google-services" version "4.4.2" apply false',
               '    id("com.google.gms.google-services") version "4.4.2" apply false',
           )
-
           add_plugin(
-              first_existing(
-                  "android/app/build.gradle.kts",
-                  "android/app/build.gradle",
-              ),
+              first_existing('android/app/build.gradle.kts', 'android/app/build.gradle'),
               '    id "com.google.gms.google-services"',
               '    id("com.google.gms.google-services")',
           )
@@ -146,84 +108,60 @@ workflows:
         script: |
           python3 - <<'PY'
           from pathlib import Path
-
-          manifest = Path(
-              "android/app/src/main/AndroidManifest.xml"
-          )
-
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
           text = manifest.read_text()
-
-          if "android.permission.RECORD_AUDIO" not in text:
-              permissions = """    <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.CAMERA"/>
-              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
-              """
-
-              text = text.replace(
-                  "<application",
-                  permissions + "    <application",
-                  1,
+          if 'RECORD_AUDIO' not in text:
+              perms = (
+                  '    <uses-permission android:name="android.permission.INTERNET"/>\n'
+                  '    <uses-permission android:name="android.permission.CAMERA"/>\n'
+                  '    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n'
+                  '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n'
+                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n'
+                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n'
               )
-
+              text = text.replace('<application', perms + '    <application', 1)
               manifest.write_text(text)
           PY
 
       - name: Get packages
         script: flutter pub get
 
-      - name: Fix all Flutter plugins compileSdk
+      - name: Fix Agora compileSdk
         script: |
           python3 - <<'PY'
           import re
           from pathlib import Path
 
-          plugin_files = list(
-              Path.home().glob(
-                  ".pub-cache/hosted/**/android/build.gradle*"
-              )
-          )
+          candidates = list(Path.home().glob('.pub-cache/hosted/**/agora_rtc_engine-*/android/build.gradle*'))
+          if not candidates:
+              raise SystemExit('Could not find Agora Android Gradle file')
 
-          if not plugin_files:
-              raise SystemExit(
-                  "No Flutter plugin Gradle files were found"
-              )
-
-          changed = 0
-
-          for path in plugin_files:
+          changed = False
+          for path in candidates:
               text = path.read_text()
-
-              if path.suffix == ".kts":
+              if path.suffix == '.kts':
                   updated = re.sub(
-                      r"(?m)^(\s*)compileSdk\s*=.*$",
-                      r"\1compileSdk = 36",
+                      r'(?m)^(\s*)compileSdk\s*=.*$',
+                      r'\1compileSdk = 36',
                       text,
                   )
               else:
                   updated = re.sub(
-                      r"(?m)^(\s*)compileSdk(?:Version)?\s+.*$",
-                      r"\1compileSdkVersion 36",
+                      r'(?m)^(\s*)compileSdk(?:Version)?\s+.*$',
+                      r'\1compileSdkVersion 36',
                       text,
                   )
-
               if updated != text:
+                  changed = True
                   path.write_text(updated)
-                  changed += 1
-                  print(f"Updated compileSdk to 36: {path}")
-
-          if changed == 0:
-              raise SystemExit(
-                  "No Flutter plugin compileSdk values were changed"
-              )
-
-          print(f"Updated {changed} Flutter plugin Gradle files")
+                  print(f'Updated Agora compileSdk: {path}')
+              else:
+                  print(f'No compileSdk change needed in: {path}')
+          if not changed:
+              raise SystemExit('Agora compileSdk was not changed; inspect the package Gradle file')
           PY
 
       - name: Build debug APK
         script: flutter build apk --debug
-
     artifacts:
       - build/app/outputs/flutter-apk/app-debug.apk
