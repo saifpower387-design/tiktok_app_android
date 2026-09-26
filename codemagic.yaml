@@ -114,6 +114,7 @@ workflows:
                   return
 
               line = kts_line if path.suffix == ".kts" else groovy_line
+
               text = text.replace(
                   "plugins {",
                   "plugins {\n" + line,
@@ -196,16 +197,17 @@ workflows:
               text = path.read_text()
 
               if path.suffix == ".kts":
-                  replacement = "compileSdk = 36"
+                  updated = re.sub(
+                      r"(?m)^(\s*)compileSdk\s*=.*$",
+                      r"\1compileSdk = 36",
+                      text,
+                  )
               else:
-                  replacement = "compileSdkVersion 36"
-
-              updated = re.sub(
-                  r"compileSdk(?:Version)?\s*(?:=\s*)?"
-                  r"(?:31|flutter\.compileSdkVersion)\b",
-                  replacement,
-                  text,
-              )
+                  updated = re.sub(
+                      r"(?m)^(\s*)compileSdk(?:Version)?\s+.*$",
+                      r"\1compileSdkVersion 36",
+                      text,
+                  )
 
               if updated != text:
                   path.write_text(updated)
