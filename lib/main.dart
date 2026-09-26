@@ -88,6 +88,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLogin = true;
   bool _isLoading = false;
@@ -130,29 +131,70 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submitAuthForm() async {
-    final email = _emailController.text.trim();
+    final identifier = _emailController.text.trim();
+    final username = _usernameController.text.trim().toLowerCase();
     final password = _passwordController.text.trim();
-    if (email.isEmpty || password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل بريدًا صحيحًا وكلمة مرور من 6 أحرف على الأقل')));
+    if (identifier.isEmpty || password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل البريد أو اسم المستخدم وكلمة مرور من 6 أحرف على الأقل')));
+      return;
+    }
+    if (!_isLogin && (username.length < 3 || !identifier.contains('@'))) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل اسم مستخدم من 3 أحرف وبريدًا إلكترونيًا صحيحًا')));
       return;
     }
     setState(() => _isLoading = true);
     try {
+      var email = identifier;
+      if (_isLogin && !identifier.contains('@')) {
+        final result = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: identifier.toLowerCase())
+            .limit(1)
+            .get();
+        if (result.docs.isEmpty) {
+          throw FirebaseAuthException(code: 'user-not-found', message: 'اسم المستخدم غير موجود');
+        }
+        email = result.docs.first.data()['email'] as String? ?? '';
+        if (email.isEmpty) {
+          throw FirebaseAuthException(code: 'invalid-user-data', message: 'بيانات المستخدم غير مكتملة');
+        }
+      }
+      if (!_isLogin) {
+        final existing = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: username)
+            .limit(1)
+            .get();
+        if (existing.docs.isNotEmpty) {
+          throw FirebaseAuthException(code: 'username-already-in-use', message: 'اسم المستخدم مستخدم بالفعل');
+        }
+      }
       final result = _isLogin
           ? await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password)
           : await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
       final user = result.user!;
       AppData.isLoggedIn = true;
       AppData.userEmail = user.email ?? email;
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      AppData.userName = _isLogin ? identifier : username;
+      final userData = <String, dynamic>{
         'uid': user.uid,
         'email': user.email,
-        'displayName': user.displayName ?? email.split('@').first,
+        'displayName': _isLogin ? user.displayName ?? email.split('@').first : username,
         'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+      if (!_isLogin) userData['username'] = username;
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(userData, SetOptions(merge: true));
       if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
     } on FirebaseAuthException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تسجيل الدخول: ${e.message ?? e.code}')));
+      final message = switch (e.code) {
+        'user-not-found' => 'اسم المستخدم أو البريد غير موجود',
+        'wrong-password' || 'invalid-credential' => 'اسم المستخدم أو كلمة المرور غير صحيحة',
+        'email-already-in-use' => 'هذا البريد مستخدم بالفعل',
+        'username-already-in-use' => 'اسم المستخدم مستخدم بالفعل',
+        'operation-not-allowed' => 'فعّل Email/Password من Firebase Console',
+        _ => e.message ?? 'فشل تسجيل الدخول',
+      };
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
     } finally {
@@ -163,6 +205,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -181,7 +224,23 @@ class _AuthScreenState extends State<AuthScreen> {
                 const SizedBox(height: 20),
                 Text(_isLogin ? 'تسجيل الدخول لتيك توك' : 'إنشاء حساب جديد 🚀', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 30),
-                TextField(controller: _emailController, decoration: const InputDecoration(hintText: 'البريد الإلكتروني', filled: true)),
+                if (!_isLogin)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 15),
+                    child: TextField(
+                      controller: _usernameController,
+                      decoration: const InputDecoration(hintText: 'اسم المستخدم', filled: true, prefixIcon: Icon(Icons.person)),
+                    ),
+                  ),
+                TextField(
+                  controller: _emailController,
+                  keyboardType: _isLogin ? TextInputType.text : TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    hintText: _isLogin ? 'البريد الإلكتروني أو اسم المستخدم' : 'البريد الإلكتروني',
+                    filled: true,
+                    prefixIcon: const Icon(Icons.email),
+                  ),
+                ),
                 const SizedBox(height: 15),
                 TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(hintText: 'كلمة المرور', filled: true)),
                 const SizedBox(height: 25),
