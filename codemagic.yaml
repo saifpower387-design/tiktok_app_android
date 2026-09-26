@@ -174,26 +174,26 @@ workflows:
       - name: Get packages
         script: flutter pub get
 
-      - name: Fix Agora compileSdk
+      - name: Fix all Flutter plugins compileSdk
         script: |
           python3 - <<'PY'
           import re
           from pathlib import Path
 
-          candidates = list(
+          plugin_files = list(
               Path.home().glob(
-                  ".pub-cache/hosted/**/agora_rtc_engine-*/android/build.gradle*"
+                  ".pub-cache/hosted/**/android/build.gradle*"
               )
           )
 
-          if not candidates:
+          if not plugin_files:
               raise SystemExit(
-                  "Could not find Agora Android Gradle file"
+                  "No Flutter plugin Gradle files were found"
               )
 
-          changed = False
+          changed = 0
 
-          for path in candidates:
+          for path in plugin_files:
               text = path.read_text()
 
               if path.suffix == ".kts":
@@ -211,15 +211,15 @@ workflows:
 
               if updated != text:
                   path.write_text(updated)
-                  changed = True
-                  print(f"Updated Agora compileSdk: {path}")
-              else:
-                  print(f"No compileSdk change needed in: {path}")
+                  changed += 1
+                  print(f"Updated compileSdk to 36: {path}")
 
-          if not changed:
+          if changed == 0:
               raise SystemExit(
-                  "Agora compileSdk was not changed; inspect the package Gradle file"
+                  "No Flutter plugin compileSdk values were changed"
               )
+
+          print(f"Updated {changed} Flutter plugin Gradle files")
           PY
 
       - name: Build debug APK
