@@ -10,23 +10,39 @@ workflows:
           rm -rf android
           flutter create . --platforms=android
 
+      - name: Apply ST app icon
+        script: |
+          set -e
+
+          icon_root="assets/app_icon"
+          test -f "$icon_root/app_icon.png" || {
+            echo "App icon assets are missing"
+            exit 1
+          }
+
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            target="android/app/src/main/res/mipmap-$density"
+            mkdir -p "$target"
+            cp "$icon_root/mipmap-$density/ic_launcher.png" "$target/ic_launcher.png"
+            cp "$icon_root/mipmap-$density/ic_launcher_round.png" "$target/ic_launcher_round.png"
+          done
+
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          echo "Applied professional S/T launcher icon"
+
       - name: Generate Google OAuth fingerprints
         script: |
           mkdir -p "$HOME/.android"
 
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          test -f signing/debug.keystore || {
+            echo "signing/debug.keystore is missing"
+            exit 1
+          }
 
-          echo "Copy these values to Firebase Project settings:" 
+          cp signing/debug.keystore "$HOME/.android/debug.keystore"
+
+          echo "Copy these values to Firebase Project settings:"
           keytool -list -v \
             -alias androiddebugkey \
             -keystore "$HOME/.android/debug.keystore" \
