@@ -1595,7 +1595,37 @@ class _AccountStatusScreenState extends State<AccountStatusScreen> { bool active
 class HelpCenterScreen extends StatefulWidget { const HelpCenterScreen({super.key}); @override State<HelpCenterScreen> createState()=>_HelpCenterScreenState(); }
 class _HelpCenterScreenState extends State<HelpCenterScreen> { final c=TextEditingController(); @override Widget build(BuildContext context)=>Scaffold(appBar: AppBar(title: const Text('مركز المساعدة')), body: Padding(padding: const EdgeInsets.all(20), child: Column(children: [const Text('اكتب مشكلتك وسيتم تسجيلها لفريق الدعم.'), const SizedBox(height:15), TextField(controller:c, maxLines:6, decoration: const InputDecoration(hintText:'اكتب الشكوى أو المشكلة', filled:true)), const SizedBox(height:15), ElevatedButton.icon(icon: const Icon(Icons.send), label: const Text('إرسال البلاغ'), onPressed: () async { if(c.text.trim().isEmpty)return; final u=FirebaseAuth.instance.currentUser; await FirebaseFirestore.instance.collection('supportTickets').add({'userId':u?.uid,'message':c.text.trim(),'createdAt':FieldValue.serverTimestamp(),'phone':'01205293436'}); if(context.mounted){c.clear(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال البلاغ للدعم')));} })]))); @override void dispose(){c.dispose();super.dispose();} }
 
-class ProfileQrScreen extends StatelessWidget { const ProfileQrScreen({super.key}); @override Widget build(BuildContext context) { final u=FirebaseAuth.instance.currentUser; final code='stvideo://profile/${u?.uid ?? 'guest'}'; return Scaffold(appBar: AppBar(title: const Text('رمز الملف الشخصي')), body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.qr_code_2, size: 220), const SizedBox(height:15), const Text('شارك هذا الرمز للوصول إلى صفحتك'), SelectableText(code), const SizedBox(height:15), ElevatedButton.icon(icon: const Icon(Icons.share), label: const Text('مشاركة الرابط'), onPressed: ()=>ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تجهيز رابط الملف الشخصي للمشاركة'))))])); } }
+class ProfileQrScreen extends StatelessWidget {
+  const ProfileQrScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final code = 'stvideo://profile/${user?.uid ?? 'guest'}';
+    return Scaffold(
+      appBar: AppBar(title: const Text('رمز الملف الشخصي')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.qr_code_2, size: 220),
+            const SizedBox(height: 15),
+            const Text('شارك هذا الرمز للوصول إلى صفحتك'),
+            SelectableText(code),
+            const SizedBox(height: 15),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.share),
+              label: const Text('مشاركة الرابط'),
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم تجهيز رابط الملف الشخصي للمشاركة')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // 8. البث المباشر عبر Agora// 8. البث المباشر عبر Agora (بدون Certificate - Testing mode)
 class LiveStreamScreen extends StatefulWidget {
