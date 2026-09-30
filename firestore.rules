@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function own(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Financial records: balances and transaction writes are server-only.
+    match /wallets/{uid} {
+      allow read: if own(uid);
+      allow write: if false;
+    }
+    match /withdrawalRequests/{requestId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+    match /giftTransactions/{giftId} {
+      allow read: if signedIn() && (resource.data.senderUid == request.auth.uid || resource.data.hostUid == request.auth.uid);
+      allow write: if false;
+    }
+    match /adRevenueEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    // Existing app collections.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update, delete: if own(uid);
+    }
+    match /videos/{videoId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+    match /comments/{commentId} {
+      allow read, create: if signedIn();
+      allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /likes/{likeId} {
+      allow read, create, delete: if signedIn();
+      allow update: if false;
+    }
+    match /followers/{id} {
+      allow read, write: if signedIn();
+    }
+    match /following/{id} {
+      allow read, write: if signedIn();
+    }
+    match /savedVideos/{id} {
+      allow read, write: if signedIn();
+    }
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if signedIn();
+    }
+  }
+}
