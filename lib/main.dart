@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -22,6 +23,30 @@ const int minimumWithdrawalEgp = 50;
 const admobAppId = 'ca-app-pub-5663628720448893~5879440187';
 const nativeFeedAdUnitId = 'ca-app-pub-5663628720448893/2486990081';
 const testNativeFeedAdUnitId = 'ca-app-pub-3940256099942544/2247696110';
+const testAppOpenAdUnitId = 'ca-app-pub-3940256099942544/9257395920052544';
+
+class AppOpenAdManager {
+  static bool _shownThisLaunch = false;
+  static void loadAndShow() {
+    if (_shownThisLaunch) return;
+    _shownThisLaunch = true;
+    AppOpenAd.load(
+      adUnitId: testAppOpenAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) {
+          ad.fullScreenContentCallback = FullScreenContentCallback(
+            onAdDismissedFullScreenContent: (ad) => ad.dispose(),
+            onAdFailedToShowFullScreenContent: (ad, error) => ad.dispose(),
+          );
+          ad.show();
+        },
+        onAdFailedToLoad: (error) => debugPrint('App Open Ad failed: $error'),
+      ),
+      orientation: AppOpenAd.orientationPortrait,
+    );
+  }
+}
 
 // قائمة عالمية لحفظ الفيديوهات المنشورة ديناميكياً
 class VideoItem {
@@ -69,6 +94,7 @@ void main() async {
     debugPrint("خطأ في تشغيل الكاميرات: $e");
   }
   runApp(const TikTokCloneApp());
+  Future<void>.delayed(const Duration(seconds: 1), AppOpenAdManager.loadAndShow);
 }
 
 class TikTokCloneApp extends StatelessWidget {
@@ -79,9 +105,12 @@ class TikTokCloneApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'TikTok Pro Clone',
-      theme: ThemeData.dark().copyWith(
+      theme: ThemeData.dark(useMaterial3: true).copyWith(
         scaffoldBackgroundColor: Colors.black,
         primaryColor: Colors.redAccent,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF176B), brightness: Brightness.dark),
+        cardTheme: CardThemeData(color: const Color(0xFF17171C), elevation: 6, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+        appBarTheme: const AppBarTheme(centerTitle: true, backgroundColor: Colors.transparent, elevation: 0),
       ),
       home: AppData.isLoggedIn ? const MainScreen() : const AuthScreen(),
     );
@@ -112,9 +141,12 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     setState(() => _isLoading = true);
     try {
-      final account = await GoogleSignIn(
+      final googleSignIn = GoogleSignIn(
         serverClientId: '67126189193-akc65ebuqfnm9988212nbt47bqk061ul.apps.googleusercontent.com',
-      ).signIn().timeout(const Duration(seconds: 30));
+      );
+      // Clear the cached Google account so the chooser appears every time.
+      try { await googleSignIn.signOut(); } catch (_) {}
+      final account = await googleSignIn.signIn().timeout(const Duration(seconds: 30));
       if (account == null) {
         if (mounted) setState(() => _isLoading = false);
         return;
@@ -370,19 +402,17 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: NavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.black,
-        selectedItemColor: Colors.redAccent,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'اكتشف'),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box, size: 38, color: Colors.redAccent), label: 'تصوير'),
-          BottomNavigationBarItem(icon: Icon(Icons.message), label: 'الرسائل'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'حسابي'),
+        backgroundColor: const Color(0xFF0B0B10),
+        indicatorColor: const Color(0x55FF176B),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
+          NavigationDestination(icon: Icon(Icons.search), label: 'اكتشف'),
+          NavigationDestination(icon: Icon(Icons.add_box_outlined, size: 30), selectedIcon: Icon(Icons.add_box, size: 30), label: 'تصوير'),
+          NavigationDestination(icon: Icon(Icons.message_outlined), selectedIcon: Icon(Icons.message), label: 'الرسائل'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'حسابي'),
         ],
       ),
     );
@@ -643,8 +673,10 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
             final term = _searchController.text.trim().toLowerCase();
             final docs = snapshot.data!.docs.where((doc) {
-              if (term.isEmpty) return true;
               final data = doc.data();
+              final visibility = data['visibility']?.toString() ?? 'public';
+              if (visibility != 'public') return false;
+              if (term.isEmpty) return true;
               return '${data['caption'] ?? ''} ${data['username'] ?? ''}'.toLowerCase().contains(term);
             }).toList();
             if (docs.isEmpty) return const Center(child: Text('لا توجد منشورات مطابقة'));
@@ -996,6 +1028,10 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
   }
 
   Future<void> _openSnapCameraKit() async {
+    if (!Platform.isAndroid) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Snap Lenses متاحة حاليًا على Android فقط')));
+      return;
+    }
     try {
       final result = await _snapCameraChannel.invokeMethod<dynamic>('openCameraKitLenses');
       if (!mounted || result is! Map) return;
@@ -1010,6 +1046,8 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
         context,
         MaterialPageRoute(builder: (_) => UploadPostScreen(mediaPath: path)),
       );
+    } on MissingPluginException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Snap Lenses غير مضافة في نسخة البناء الحالية. تأكد من رفع codemagic.yaml ثم أعد البناء.')));
     } on PlatformException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1193,9 +1231,29 @@ class UploadPostScreen extends StatefulWidget {
 class _UploadPostScreenState extends State<UploadPostScreen> {
   final TextEditingController _captionController = TextEditingController();
   bool _commentsAllowed = true;
+  String _visibility = 'public';
   String _selectedSong = 'أغنية الحماس والترند 🎵'; // أغنية افتراضية تليق بالصورة/الفيديو تلقائياً
   double _originalSoundVolume = 0.8;
   double _addedSongVolume = 0.5;
+  final AudioPlayer _songPlayer = AudioPlayer();
+  final Map<String, String> _songUrls = const {
+    'أغنية الحماس والترند 🎵': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+    'ريمكس رقصة تيك توك 🔥': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+    'موسيقى هادئة ورومانسية 🎸': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+    'إيقاع سريع ورائع ⚡': 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
+  };
+  VideoPlayerController? _previewController;
+  bool _previewReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') || widget.mediaPath.toLowerCase().endsWith('.jpeg') || widget.mediaPath.toLowerCase().endsWith('.png');
+    if (!isImage) {
+      _previewController = VideoPlayerController.file(File(widget.mediaPath))
+        ..initialize().then((_) { if (mounted) setState(() => _previewReady = true); });
+    }
+  }
 
   void _insertText(String textToInsert) {
     final currentText = _captionController.text;
@@ -1241,6 +1299,7 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
                           trailing: _selectedSong == song ? const Icon(Icons.check, color: Colors.amber) : null,
                           onTap: () {
                             setState(() => _selectedSong = song);
+                            _songPlayer.play(UrlSource(_songUrls[song]!));
                             setModalState(() {});
                           },
                         );
@@ -1315,6 +1374,7 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
         'username': user.displayName ?? user.email?.split('@').first ?? 'saif_creator',
         'caption': _captionController.text.trim().isEmpty ? 'منشور جديد 🔥' : _captionController.text.trim(),
         'commentsAllowed': _commentsAllowed,
+        'visibility': _visibility,
         'selectedSong': _selectedSong,
         'downloadUrl': url,
         'mediaType': isImage ? 'image' : 'video',
@@ -1335,6 +1395,8 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
   @override
   void dispose() {
     _captionController.dispose();
+    _songPlayer.dispose();
+    _previewController?.dispose();
     super.dispose();
   }
 
@@ -1356,6 +1418,8 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
+            _buildMediaPreview(),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(color: Colors.grey[850], borderRadius: BorderRadius.circular(10)),
@@ -1402,6 +1466,18 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
               activeColor: Colors.redAccent,
               onChanged: (val) => setState(() => _commentsAllowed = val),
             ),
+            Card(
+              color: Colors.grey[850],
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('من يستطيع مشاهدة هذا المنشور؟', style: TextStyle(fontWeight: FontWeight.bold)),
+                  RadioListTile<String>(value: 'public', groupValue: _visibility, title: const Text('الجميع'), onChanged: (v) => setState(() => _visibility = v!)),
+                  RadioListTile<String>(value: 'friends', groupValue: _visibility, title: const Text('الأصدقاء'), onChanged: (v) => setState(() => _visibility = v!)),
+                  RadioListTile<String>(value: 'private', groupValue: _visibility, title: const Text('أنا فقط'), onChanged: (v) => setState(() => _visibility = v!)),
+                ]),
+              ),
+            ),
             const SizedBox(height: 30),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(14)),
@@ -1411,6 +1487,25 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMediaPreview() {
+    final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') || widget.mediaPath.toLowerCase().endsWith('.jpeg') || widget.mediaPath.toLowerCase().endsWith('.png');
+    return Container(
+      height: 360,
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(18)),
+      child: isImage
+          ? Image.file(File(widget.mediaPath), fit: BoxFit.cover)
+          : !_previewReady || _previewController == null
+              ? const Center(child: CircularProgressIndicator())
+              : Stack(fit: StackFit.expand, children: [
+                  FittedBox(fit: BoxFit.cover, child: SizedBox(width: _previewController!.value.size.width, height: _previewController!.value.size.height, child: VideoPlayer(_previewController!))),
+                  Center(child: IconButton(onPressed: () { setState(() { _previewController!.value.isPlaying ? _previewController!.pause() : _previewController!.play(); }); }, icon: Icon(_previewController!.value.isPlaying ? Icons.pause_circle : Icons.play_circle, size: 64, color: Colors.white))),
+                  const Positioned(top: 12, right: 12, child: Chip(label: Text('معاينة قبل النشر'))),
+                ]),
     );
   }
 }
@@ -1448,82 +1543,92 @@ class InboxScreen extends StatelessWidget {
 }
 
 // 6. صفحة الملف الشخصي المرتبطة بـ Firestore
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 4, vsync: this);
+  @override
+  void dispose() { _tabs.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Scaffold(body: Center(child: Text('سجل الدخول أولًا')));
-    final videos = FirebaseFirestore.instance.collection('videos').where('ownerId', isEqualTo: user.uid).orderBy('createdAt', descending: true).snapshots();
     final profile = FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('حسابي'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('حسابي'), actions: [IconButton(icon: const Icon(Icons.menu), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())))]),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: profile,
-        builder: (_, profileSnap) {
-          final data = profileSnap.data?.data() ?? {};
+        builder: (_, snap) {
+          final data = snap.data?.data() ?? {};
+          final photo = (data['photoUrl'] as String?) ?? user.photoURL;
           return Column(children: [
-            const SizedBox(height: 15),
-            CircleAvatar(
-              radius: 45,
-              backgroundImage: user.photoURL == null ? null : NetworkImage(user.photoURL!),
-              child: user.photoURL == null ? const Icon(Icons.person, size: 55) : null,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              data['displayName'] ?? user.displayName ?? user.email ?? 'مستخدم',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 5),
-            Text(user.email ?? '', style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 15),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text('المتابعون: ${data['followersCount'] ?? 0}'),
-              const SizedBox(width: 24),
-              Text('المتابَعون: ${data['followingCount'] ?? 0}'),
-            ]),
-            const SizedBox(height: 15),
-            const Divider(),
-            const Text('منشوراتي', style: TextStyle(color: Colors.grey)),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: videos,
-                builder: (_, snap) {
-                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                  final docs = snap.data!.docs;
-                  if (docs.isEmpty) return const Center(child: Text('لم تنشر شيئًا بعد'));
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(5),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 5,
-                      mainAxisSpacing: 5,
-                    ),
-                    itemCount: docs.length,
-                    itemBuilder: (_, i) {
-                      final url = docs[i].data()['downloadUrl'] as String? ?? '';
-                      return url.isEmpty
-                          ? const ColoredBox(color: Colors.grey)
-                          : Image.network(url, fit: BoxFit.cover);
-                    },
-                  );
-                },
-              ),
-            ),
+            Padding(padding: const EdgeInsets.fromLTRB(16, 18, 16, 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('المتابعون ${data['followersCount'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8), Text('أتابع ${data['followingCount'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+                SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.edit), label: const Text('تعديل الملف الشخصي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileEditScreen())))),
+              ])),
+              const SizedBox(width: 18),
+              Column(children: [CircleAvatar(radius: 48, backgroundImage: photo == null || photo.isEmpty ? null : NetworkImage(photo), child: photo == null || photo.isEmpty ? const Icon(Icons.person, size: 58) : null), const SizedBox(height: 8), Text(data['displayName'] ?? user.displayName ?? 'مستخدم', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)), Text('@${data['username'] ?? user.email?.split('@').first ?? 'user'}', style: const TextStyle(color: Colors.white60))]),
+            ])),
+            TabBar(controller: _tabs, tabs: const [Tab(text: 'عام'), Tab(text: 'خاص'), Tab(text: 'أعجبني'), Tab(text: 'إعادة نشر')], labelColor: Colors.redAccent, indicatorColor: Colors.redAccent),
+            Expanded(child: TabBarView(controller: _tabs, children: [
+              _ProfileGrid(query: FirebaseFirestore.instance.collection('videos').where('ownerId', isEqualTo: user.uid).where('visibility', isEqualTo: 'public')),
+              _ProfileGrid(query: FirebaseFirestore.instance.collection('videos').where('ownerId', isEqualTo: user.uid).where('visibility', isEqualTo: 'private')),
+              const Center(child: Text('الفيديوهات التي أعجبت بها ستظهر هنا')),
+              const Center(child: Text('الفيديوهات المعاد نشرها ستظهر هنا')),
+            ])),
           ]);
         },
       ),
     );
   }
 }
+
+class _ProfileGrid extends StatelessWidget {
+  final Query<Map<String, dynamic>> query;
+  const _ProfileGrid({required this.query});
+  @override
+  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: query.orderBy('createdAt', descending: true).snapshots(),
+    builder: (_, snap) {
+      if (snap.hasError) return Center(child: Text('تعذر تحميل الفيديوهات: ${snap.error}'));
+      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+      if (snap.data!.docs.isEmpty) return const Center(child: Text('لا توجد منشورات هنا'));
+      return GridView.builder(padding: const EdgeInsets.all(5), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 5, mainAxisSpacing: 5), itemCount: snap.data!.docs.length, itemBuilder: (_, i) { final d=snap.data!.docs[i].data(); final url=d['downloadUrl'] as String? ?? ''; return url.isEmpty ? const ColoredBox(color: Colors.grey) : Image.network(url, fit: BoxFit.cover); });
+    },
+  );
+}
+
+class ProfileEditScreen extends StatefulWidget {
+  const ProfileEditScreen({super.key});
+  @override State<ProfileEditScreen> createState() => _ProfileEditScreenState();
+}
+class _ProfileEditScreenState extends State<ProfileEditScreen> {
+  final _name = TextEditingController(); final _username = TextEditingController();
+  String _initialUsername = '';
+  String? _photoUrl; XFile? _picked; bool _saving=false; Timestamp? _usernameChangedAt;
+  @override void initState() { super.initState(); _load(); }
+  Future<void> _load() async { final u=FirebaseAuth.instance.currentUser; if(u==null)return; final d=(await FirebaseFirestore.instance.collection('users').doc(u.uid).get()).data()??{}; if(!mounted)return; setState(() { _name.text=(d['displayName']??u.displayName??'').toString(); _initialUsername=(d['username']??'').toString().toLowerCase(); _username.text=_initialUsername; _photoUrl=d['photoUrl']??u.photoURL; _usernameChangedAt=d['usernameChangedAt'] as Timestamp?; }); }
+  Future<void> _save() async { final u=FirebaseAuth.instance.currentUser; if(u==null)return; final name=_name.text.trim(); final username=_username.text.trim().toLowerCase(); if(name.isEmpty||username.length<3){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل الاسم واسم مستخدم صحيح')));return;} if(username!=_initialUsername && _usernameChangedAt!=null && DateTime.now().difference(_usernameChangedAt!.toDate()).inDays<7){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يمكن تغيير اسم المستخدم مرة كل 7 أيام')));return;} setState(()=>_saving=true); try { var photo=_photoUrl; if(_picked!=null){final ref=FirebaseStorage.instance.ref('profile_images/${u.uid}.jpg'); await ref.putFile(File(_picked!.path), SettableMetadata(contentType:'image/jpeg')); photo=await ref.getDownloadURL();} final data=<String,dynamic>{'displayName':name,'username':username,'photoUrl':photo,'updatedAt':FieldValue.serverTimestamp()}; if(username!=_initialUsername) data['usernameChangedAt']=FieldValue.serverTimestamp(); await FirebaseFirestore.instance.collection('users').doc(u.uid).set(data,SetOptions(merge:true)); await u.updateDisplayName(name); if(photo!=null) await u.updatePhotoURL(photo); if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي'),backgroundColor: Colors.green));Navigator.pop(context);}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ التعديل: $e')));}finally{if(mounted)setState(()=>_saving=false);}}
+  @override void dispose(){_name.dispose();_username.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>Scaffold(appBar: AppBar(title: const Text('تعديل الملف الشخصي')),body: ListView(padding: const EdgeInsets.all(20),children:[Center(child: Stack(children:[CircleAvatar(radius:58,backgroundImage:_picked!=null?FileImage(File(_picked!.path)) as ImageProvider : (_photoUrl==null?null:NetworkImage(_photoUrl!)),child:_picked==null&&_photoUrl==null?const Icon(Icons.person,size: 58):null),Positioned(bottom:0,right:0,child: IconButton(onPressed:()async{final x=await ImagePicker().pickImage(source:ImageSource.gallery);if(x!=null)setState(()=>_picked=x);},icon:const CircleAvatar(child:Icon(Icons.camera_alt))))])),const SizedBox(height:20),TextField(controller:_name,decoration:const InputDecoration(labelText:'الاسم الظاهر',prefixIcon:Icon(Icons.person))),const SizedBox(height:12),TextField(controller:_username,decoration:const InputDecoration(labelText:'اسم المستخدم',prefixIcon:Icon(Icons.alternate_email))),const SizedBox(height:8),const Text('يمكن تغيير اسم المستخدم مرة كل 7 أيام.',style:TextStyle(color:Colors.white60)),const SizedBox(height:24),SizedBox(height:50,child:ElevatedButton(onPressed:_saving?null:_save,child:_saving?const CircularProgressIndicator():const Text('حفظ التعديلات')))]));
+}
+
+class PersonalInfoScreen extends StatelessWidget { const PersonalInfoScreen({super.key}); @override Widget build(BuildContext context){final u=FirebaseAuth.instance.currentUser;return Scaffold(appBar:AppBar(title:const Text('المعلومات الشخصية')),body:ListView(children:[ListTile(leading:const Icon(Icons.email),title:const Text('البريد الإلكتروني'),subtitle:Text(u?.email??'غير مرتبط')),ListTile(leading:const Icon(Icons.phone),title:const Text('رقم الهاتف'),subtitle:const Text('يمكن ربطه من Firebase Authentication')),ListTile(leading:const Icon(Icons.edit),title:const Text('تعديل البيانات'),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const ProfileEditScreen()))) ]);}}
+
+class SecurityScreen extends StatefulWidget { const SecurityScreen({super.key}); @override State<SecurityScreen> createState()=>_SecurityScreenState(); }
+class _SecurityScreenState extends State<SecurityScreen>{ final _old=TextEditingController();final _new=TextEditingController();bool _alerts=false;bool _twoFactor=false;Future<void> _change()async{final u=FirebaseAuth.instance.currentUser;if(u==null)return;try{final cred=EmailAuthProvider.credential(email:u.email!,password:_old.text);await u.reauthenticateWithCredential(cred);await u.updatePassword(_new.text);if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تغيير كلمة المرور')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تعذر تغيير كلمة المرور؛ تأكد من كلمة المرور الحالية')));}}@override void dispose(){_old.dispose();_new.dispose();super.dispose();}@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('الأمان والأذونات')),body:ListView(padding:const EdgeInsets.all(12),children:[SwitchListTile(title:const Text('تنبيهات تسجيل الدخول'),subtitle:const Text('إشعار عند تسجيل الدخول من جهاز جديد'),value:_alerts,onChanged:(v)=>setState(()=>_alerts=v)),SwitchListTile(title:const Text('التحقق بخطوتين'),subtitle:const Text('يتطلب إعداد مزود SMS رسمي لتفعيله بالكامل'),value:_twoFactor,onChanged:(v)=>setState(()=>_twoFactor=v)),const Divider(),TextField(controller:_old,obscureText:true,decoration:const InputDecoration(labelText:'كلمة المرور الحالية')),TextField(controller:_new,obscureText:true,decoration:const InputDecoration(labelText:'كلمة المرور الجديدة')),const SizedBox(height:12),ElevatedButton(onPressed:_change,child:const Text('تغيير كلمة المرور'))]));}
+
+class ProfileQrScreen extends StatelessWidget { const ProfileQrScreen({super.key}); @override Widget build(BuildContext context){final u=FirebaseAuth.instance.currentUser;final code='stvideo://profile/${u?.uid??'guest'}';return Scaffold(appBar:AppBar(title:const Text('رمز الملف الشخصي')),body:Center(child:SelectableText(code)));}}
+
+class AccountStatusScreen extends StatefulWidget { const AccountStatusScreen({super.key}); @override State<AccountStatusScreen> createState() => _AccountStatusScreenState(); }
+class _AccountStatusScreenState extends State<AccountStatusScreen> { bool _active=true; bool _showToFriends=true; @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('حالة الحساب')),body:ListView(children:[const ListTile(leading:Icon(Icons.check_circle,color:Colors.green),title:Text('حالة الحساب جيدة'),subtitle:Text('لا توجد مخالفات مسجلة على حسابك')),SwitchListTile(title:const Text('نشاط الحساب'),subtitle:const Text('يسمح للأصدقاء برؤية أنك تستخدم التطبيق'),value:_active,onChanged:(v)=>setState(()=>_active=v)),SwitchListTile(title:const Text('إظهار حالة النشاط للأصدقاء'),value:_showToFriends,onChanged:(v)=>setState(()=>_showToFriends=v))])); }
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -1550,7 +1655,14 @@ class _WalletScreenState extends State<WalletScreen> {
       final result = await FirebaseFunctions.instance.httpsCallable('getWallet').call();
       if (mounted) setState(() => _wallet = Map<String, dynamic>.from(result.data as Map));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحميل الرصيد: $e')));
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) throw Exception('يجب تسجيل الدخول');
+        final snap = await FirebaseFirestore.instance.collection('wallets').doc(uid).get();
+        if (mounted) setState(() => _wallet = snap.exists ? snap.data()! : {'availableCoins': 0, 'pendingCoins': 0, 'lifetimeEarnedCoins': 0});
+      } catch (fallbackError) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد أرباح مسجلة حتى الآن. تأكد من نشر Firebase Functions.')));
+      }
     }
   }
 
@@ -1661,9 +1773,12 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.person_outline, color: Colors.white),
             title: const Text('المعلومات الشخصية'),
-            subtitle: Text('الاسم: ${AppData.userName}\nالرقم: ${AppData.userPhone}\nالبريد: ${AppData.userEmail}'),
-            isThreeLine: true,
+            subtitle: const Text('البريد، الهاتف، الاسم والصورة'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonalInfoScreen())),
           ),
+          ListTile(leading: const Icon(Icons.edit, color: Colors.cyanAccent), title: const Text('تعديل الملف الشخصي'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileEditScreen()))),
+          ListTile(leading: const Icon(Icons.qr_code_2, color: Colors.amber), title: const Text('رمز QR للملف الشخصي'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileQrScreen()))),
           const Divider(color: Colors.grey),
           ListTile(
             leading: const Icon(Icons.account_balance_wallet, color: Colors.amber),
@@ -1672,6 +1787,9 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
           ),
+          ListTile(leading: const Icon(Icons.security, color: Colors.greenAccent), title: const Text('الأمان والأذونات'), subtitle: const Text('كلمة المرور، تنبيهات الدخول، التحقق بخطوتين'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SecurityScreen()))),
+          ListTile(leading: const Icon(Icons.notifications_active), title: const Text('التنبيهات'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InboxScreen()))),
+          ListTile(leading: const Icon(Icons.account_circle), title: const Text('حالة الحساب'), subtitle: const Text('نشاط الحساب وظهوره للأصدقاء'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountStatusScreen()))),
           const Divider(color: Colors.grey),
           const SizedBox(height: 40),
           Padding(
@@ -1680,7 +1798,9 @@ class SettingsScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.all(12)),
               icon: const Icon(Icons.logout, color: Colors.white),
               label: const Text('تسجيل الخروج من الحساب', style: TextStyle(color: Colors.white, fontSize: 16)),
-              onPressed: () {
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                try { await GoogleSignIn().disconnect(); } catch (_) { try { await GoogleSignIn().signOut(); } catch (_) {} }
                 AppData.isLoggedIn = false;
                 Navigator.pushAndRemoveUntil(
                   context,
