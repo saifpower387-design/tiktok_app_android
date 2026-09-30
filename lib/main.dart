@@ -43,7 +43,6 @@ class AppOpenAdManager {
         },
         onAdFailedToLoad: (error) => debugPrint('App Open Ad failed: $error'),
       ),
-      orientation: AppOpenAd.orientationPortrait,
     );
   }
 }
@@ -403,7 +402,7 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: _screens[_currentIndex],
       bottomNavigationBar: NavigationBar(
-        currentIndex: _currentIndex,
+        selectedIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         backgroundColor: const Color(0xFF0B0B10),
         indicatorColor: const Color(0x55FF176B),
@@ -1620,7 +1619,39 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override Widget build(BuildContext context)=>Scaffold(appBar: AppBar(title: const Text('تعديل الملف الشخصي')),body: ListView(padding: const EdgeInsets.all(20),children:[Center(child: Stack(children:[CircleAvatar(radius:58,backgroundImage:_picked!=null?FileImage(File(_picked!.path)) as ImageProvider : (_photoUrl==null?null:NetworkImage(_photoUrl!)),child:_picked==null&&_photoUrl==null?const Icon(Icons.person,size: 58):null),Positioned(bottom:0,right:0,child: IconButton(onPressed:()async{final x=await ImagePicker().pickImage(source:ImageSource.gallery);if(x!=null)setState(()=>_picked=x);},icon:const CircleAvatar(child:Icon(Icons.camera_alt))))])),const SizedBox(height:20),TextField(controller:_name,decoration:const InputDecoration(labelText:'الاسم الظاهر',prefixIcon:Icon(Icons.person))),const SizedBox(height:12),TextField(controller:_username,decoration:const InputDecoration(labelText:'اسم المستخدم',prefixIcon:Icon(Icons.alternate_email))),const SizedBox(height:8),const Text('يمكن تغيير اسم المستخدم مرة كل 7 أيام.',style:TextStyle(color:Colors.white60)),const SizedBox(height:24),SizedBox(height:50,child:ElevatedButton(onPressed:_saving?null:_save,child:_saving?const CircularProgressIndicator():const Text('حفظ التعديلات')))]));
 }
 
-class PersonalInfoScreen extends StatelessWidget { const PersonalInfoScreen({super.key}); @override Widget build(BuildContext context){final u=FirebaseAuth.instance.currentUser;return Scaffold(appBar:AppBar(title:const Text('المعلومات الشخصية')),body:ListView(children:[ListTile(leading:const Icon(Icons.email),title:const Text('البريد الإلكتروني'),subtitle:Text(u?.email??'غير مرتبط')),ListTile(leading:const Icon(Icons.phone),title:const Text('رقم الهاتف'),subtitle:const Text('يمكن ربطه من Firebase Authentication')),ListTile(leading:const Icon(Icons.edit),title:const Text('تعديل البيانات'),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const ProfileEditScreen()))) ]);}}
+class PersonalInfoScreen extends StatelessWidget {
+  const PersonalInfoScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    return Scaffold(
+      appBar: AppBar(title: const Text('المعلومات الشخصية')),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.email),
+            title: const Text('البريد الإلكتروني'),
+            subtitle: Text(user?.email ?? 'غير مرتبط'),
+          ),
+          const ListTile(
+            leading: Icon(Icons.phone),
+            title: Text('رقم الهاتف'),
+            subtitle: Text('يمكن ربطه من Firebase Authentication'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('تعديل البيانات'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class SecurityScreen extends StatefulWidget { const SecurityScreen({super.key}); @override State<SecurityScreen> createState()=>_SecurityScreenState(); }
 class _SecurityScreenState extends State<SecurityScreen>{ final _old=TextEditingController();final _new=TextEditingController();bool _alerts=false;bool _twoFactor=false;Future<void> _change()async{final u=FirebaseAuth.instance.currentUser;if(u==null)return;try{final cred=EmailAuthProvider.credential(email:u.email!,password:_old.text);await u.reauthenticateWithCredential(cred);await u.updatePassword(_new.text);if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تغيير كلمة المرور')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تعذر تغيير كلمة المرور؛ تأكد من كلمة المرور الحالية')));}}@override void dispose(){_old.dispose();_new.dispose();super.dispose();}@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('الأمان والأذونات')),body:ListView(padding:const EdgeInsets.all(12),children:[SwitchListTile(title:const Text('تنبيهات تسجيل الدخول'),subtitle:const Text('إشعار عند تسجيل الدخول من جهاز جديد'),value:_alerts,onChanged:(v)=>setState(()=>_alerts=v)),SwitchListTile(title:const Text('التحقق بخطوتين'),subtitle:const Text('يتطلب إعداد مزود SMS رسمي لتفعيله بالكامل'),value:_twoFactor,onChanged:(v)=>setState(()=>_twoFactor=v)),const Divider(),TextField(controller:_old,obscureText:true,decoration:const InputDecoration(labelText:'كلمة المرور الحالية')),TextField(controller:_new,obscureText:true,decoration:const InputDecoration(labelText:'كلمة المرور الجديدة')),const SizedBox(height:12),ElevatedButton(onPressed:_change,child:const Text('تغيير كلمة المرور'))]));}
