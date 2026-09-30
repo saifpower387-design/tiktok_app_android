@@ -16,6 +16,7 @@ dependencies:
   firebase_storage: ^11.7.7
   cloud_functions: ^4.7.6
   google_mobile_ads: ^9.1.0
+  audioplayers: ^6.8.1
   google_sign_in: ^6.2.1
   image_picker: ^1.1.2
   camera: ^0.10.5+9
