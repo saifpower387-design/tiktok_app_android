@@ -113,7 +113,11 @@ workflows:
               android:value="ca-app-pub-5663628720448893~5879440187" />
           '''
           if 'com.google.android.gms.ads.APPLICATION_ID' not in text:
-              text = text.replace('<application', '<application\n' + admob_meta, 1)
+              application_start = text.find('<application')
+              application_open_end = text.find('>', application_start)
+              if application_start < 0 or application_open_end < 0:
+                  raise SystemExit('Could not find a valid application tag in AndroidManifest.xml')
+              text = text[:application_open_end + 1] + '\n' + admob_meta + text[application_open_end + 1:]
           manifest.write_text(text)
 
           gradle = next(Path('android/app').glob('build.gradle*'), None)
