@@ -1031,6 +1031,10 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Snap Lenses متاحة حاليًا على Android فقط')));
       return;
     }
+    final oldController = _controller;
+    _controller = null;
+    if (mounted) setState(() => _isCameraInitialized = false);
+    await oldController?.dispose();
     try {
       final result = await _snapCameraChannel.invokeMethod<dynamic>('openCameraKitLenses');
       if (!mounted || result is! Map) return;
@@ -1057,6 +1061,10 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر فتح فلاتر Snap: $e')),
       );
+    } finally {
+      if (mounted && _selectedMode != 'بث مباشر') {
+        await _initCamera();
+      }
     }
   }
 
@@ -1243,6 +1251,7 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
   };
   VideoPlayerController? _previewController;
   bool _previewReady = false;
+  bool _publishing = false;
 
   @override
   void initState() {
@@ -1357,7 +1366,12 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل الدخول أولًا')));
       return;
     }
-    setState(() {});
+    final mediaFile = File(widget.mediaPath);
+    if (!await mediaFile.exists()) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ملف الفيديو غير موجود؛ أعد اختيار الفيديو')));
+      return;
+    }
+    if (mounted) setState(() => _publishing = true);
     try {
       final id = FirebaseFirestore.instance.collection('videos').doc().id;
       final isImage = widget.mediaPath.toLowerCase().endsWith('.jpg') ||
@@ -1365,8 +1379,8 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
           widget.mediaPath.toLowerCase().endsWith('.png');
       final ext = isImage ? 'jpg' : 'mp4';
       final ref = FirebaseStorage.instance.ref('videos/${user.uid}/$id.$ext');
-      await ref.putFile(File(widget.mediaPath), SettableMetadata(contentType: isImage ? 'image/jpeg' : 'video/mp4'));
-      final url = await ref.getDownloadURL();
+      await ref.putFile(mediaFile, SettableMetadata(contentType: isImage ? 'image/jpeg' : 'video/mp4')).timeout(const Duration(minutes: 5));
+      final url = await ref.getDownloadURL().timeout(const Duration(seconds: 30));
       await FirebaseFirestore.instance.collection('videos').doc(id).set({
         'id': id,
         'ownerId': user.uid,
@@ -1380,7 +1394,7 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'likesCount': 0,
         'commentsCount': 0,
-      });
+      }).timeout(const Duration(seconds: 30));
       if (!mounted) return;
       Navigator.popUntil(context, (route) => route.isFirst);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع ونشر المحتوى على Firebase بنجاح'), backgroundColor: Colors.green));
@@ -1388,6 +1402,8 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل رفع المحتوى: ${e.message ?? e.code}')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e')));
+    } finally {
+      if (mounted) setState(() => _publishing = false);
     }
   }
 
@@ -1480,8 +1496,10 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
             const SizedBox(height: 30),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, padding: const EdgeInsets.all(14)),
-              onPressed: _publishVideo,
-              child: const Text('نشر الآن 🚀', style: TextStyle(fontSize: 16)),
+              onPressed: _publishing ? null : _publishVideo,
+              child: _publishing
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('نشر الآن 🚀', style: TextStyle(fontSize: 16)),
             ),
           ],
         ),
@@ -1614,7 +1632,92 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String? _photoUrl; XFile? _picked; bool _saving=false; Timestamp? _usernameChangedAt;
   @override void initState() { super.initState(); _load(); }
   Future<void> _load() async { final u=FirebaseAuth.instance.currentUser; if(u==null)return; final d=(await FirebaseFirestore.instance.collection('users').doc(u.uid).get()).data()??{}; if(!mounted)return; setState(() { _name.text=(d['displayName']??u.displayName??'').toString(); _initialUsername=(d['username']??'').toString().toLowerCase(); _username.text=_initialUsername; _photoUrl=d['photoUrl']??u.photoURL; _usernameChangedAt=d['usernameChangedAt'] as Timestamp?; }); }
-  Future<void> _save() async { final u=FirebaseAuth.instance.currentUser; if(u==null)return; final name=_name.text.trim(); final username=_username.text.trim().toLowerCase(); if(name.isEmpty||username.length<3){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل الاسم واسم مستخدم صحيح')));return;} if(username!=_initialUsername && _usernameChangedAt!=null && DateTime.now().difference(_usernameChangedAt!.toDate()).inDays<7){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يمكن تغيير اسم المستخدم مرة كل 7 أيام')));return;} setState(()=>_saving=true); try { var photo=_photoUrl; if(_picked!=null){final ref=FirebaseStorage.instance.ref('profile_images/${u.uid}.jpg'); await ref.putFile(File(_picked!.path), SettableMetadata(contentType:'image/jpeg')); photo=await ref.getDownloadURL();} final data=<String,dynamic>{'displayName':name,'username':username,'photoUrl':photo,'updatedAt':FieldValue.serverTimestamp()}; if(username!=_initialUsername) data['usernameChangedAt']=FieldValue.serverTimestamp(); await FirebaseFirestore.instance.collection('users').doc(u.uid).set(data,SetOptions(merge:true)); await u.updateDisplayName(name); if(photo!=null) await u.updatePhotoURL(photo); if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي'),backgroundColor: Colors.green));Navigator.pop(context);}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ التعديل: $e')));}finally{if(mounted)setState(()=>_saving=false);}}
+  Future<void> _save() async {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return;
+
+    final name = _name.text.trim();
+    final enteredUsername = _username.text.trim().toLowerCase();
+    final username = enteredUsername.isEmpty
+        ? (u.email?.split('@').first.toLowerCase() ?? 'user_${u.uid.substring(0, 6)}')
+        : enteredUsername;
+
+    if (name.isEmpty || username.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أدخل الاسم واسم مستخدم صحيح')),
+      );
+      return;
+    }
+
+    if (username != _initialUsername &&
+        _usernameChangedAt != null &&
+        DateTime.now().difference(_usernameChangedAt!.toDate()).inDays < 7) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يمكن تغيير اسم المستخدم مرة كل 7 أيام')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      var photo = _photoUrl;
+      if (_picked != null) {
+        final ref = FirebaseStorage.instance.ref('profile_images/${u.uid}.jpg');
+        await ref.putFile(
+          File(_picked!.path),
+          SettableMetadata(contentType: 'image/jpeg'),
+        ).timeout(const Duration(minutes: 2));
+        photo = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
+      }
+
+      final data = <String, dynamic>{
+        'uid': u.uid,
+        'displayName': name,
+        'username': username,
+        'photoUrl': photo,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (username != _initialUsername) {
+        data['usernameChangedAt'] = FieldValue.serverTimestamp();
+      }
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(u.uid)
+          .set(data, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 20));
+
+      await u.updateDisplayName(name);
+      if (photo != null && photo.isNotEmpty) {
+        await u.updatePhotoURL(photo);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم حفظ الملف الشخصي'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر الحفظ: ${e.message ?? e.code}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر حفظ التعديل: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
   @override void dispose(){_name.dispose();_username.dispose();super.dispose();}
   @override Widget build(BuildContext context)=>Scaffold(appBar: AppBar(title: const Text('تعديل الملف الشخصي')),body: ListView(padding: const EdgeInsets.all(20),children:[Center(child: Stack(children:[CircleAvatar(radius:58,backgroundImage:_picked!=null?FileImage(File(_picked!.path)) as ImageProvider : (_photoUrl==null?null:NetworkImage(_photoUrl!)),child:_picked==null&&_photoUrl==null?const Icon(Icons.person,size: 58):null),Positioned(bottom:0,right:0,child: IconButton(onPressed:()async{final x=await ImagePicker().pickImage(source:ImageSource.gallery);if(x!=null)setState(()=>_picked=x);},icon:const CircleAvatar(child:Icon(Icons.camera_alt))))])),const SizedBox(height:20),TextField(controller:_name,decoration:const InputDecoration(labelText:'الاسم الظاهر',prefixIcon:Icon(Icons.person))),const SizedBox(height:12),TextField(controller:_username,decoration:const InputDecoration(labelText:'اسم المستخدم',prefixIcon:Icon(Icons.alternate_email))),const SizedBox(height:8),const Text('يمكن تغيير اسم المستخدم مرة كل 7 أيام.',style:TextStyle(color:Colors.white60)),const SizedBox(height:24),SizedBox(height:50,child:ElevatedButton(onPressed:_saving?null:_save,child:_saving?const CircularProgressIndicator():const Text('حفظ التعديلات')))]));
 }
