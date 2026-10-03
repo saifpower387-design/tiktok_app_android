@@ -412,7 +412,10 @@ workflows:
       - name: Build debug APK
         script: |
           set +e
-          flutter build apk --debug 2>&1 | tee /tmp/flutter_build.log
+          flutter build apk --debug \
+            --dart-define=SUPABASE_URL="${SUPABASE_URL:-}" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-}" \
+            --dart-define=SUPABASE_BUCKET="${SUPABASE_BUCKET:-st-video}" 2>&1 | tee /tmp/flutter_build.log
           BUILD_STATUS=${PIPESTATUS[0]}
           echo ""
           echo "========== FLUTTER ERROR SUMMARY =========="
