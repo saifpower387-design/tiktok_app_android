@@ -386,16 +386,9 @@ class MainScreen extends StatefulWidget {
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
-class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
-
-  @override
-  State<MainScreen> createState() => _MainScreenState();
-}
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-
   final List<Widget> _screens = [
     const VideoFeedScreen(),
     const DiscoverScreen(),
@@ -408,57 +401,24 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_currentIndex],
-
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-
-        // مهم جدًا:
-        // NavigationBar يستخدم onDestinationSelected
-        // وليس onTap
-        onDestinationSelected: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-
+        onDestinationSelected: (index) => setState(() => _currentIndex = index),
         backgroundColor: const Color(0xFF0B0B10),
         indicatorColor: const Color(0x55FF176B),
-
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'الرئيسية',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.search),
-            selectedIcon: Icon(Icons.search),
-            label: 'اكتشف',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.add_box_outlined, size: 30),
-            selectedIcon: Icon(Icons.add_box, size: 30),
-            label: 'تصوير',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.message_outlined),
-            selectedIcon: Icon(Icons.message),
-            label: 'الرسائل',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'حسابي',
-          ),
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
+          NavigationDestination(icon: Icon(Icons.search), label: 'اكتشف'),
+          NavigationDestination(icon: Icon(Icons.add_box_outlined, size: 30), selectedIcon: Icon(Icons.add_box, size: 30), label: 'تصوير'),
+          NavigationDestination(icon: Icon(Icons.message_outlined), selectedIcon: Icon(Icons.message), label: 'الرسائل'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'حسابي'),
         ],
       ),
     );
   }
 }
+
+class RemoteVideo extends StatefulWidget {
   final String url;
   const RemoteVideo({super.key, required this.url});
   @override
