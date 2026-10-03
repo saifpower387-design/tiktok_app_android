@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -24,6 +25,27 @@ const admobAppId = 'ca-app-pub-5663628720448893~5879440187';
 const nativeFeedAdUnitId = 'ca-app-pub-5663628720448893/2486990081';
 const testNativeFeedAdUnitId = 'ca-app-pub-3940256099942544/2247696110';
 const testAppOpenAdUnitId = 'ca-app-pub-3940256099942544/9257395920052544';
+const supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+const supabasePublishableKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY', defaultValue: '');
+const supabaseBucket = String.fromEnvironment('SUPABASE_BUCKET', defaultValue: 'st-video');
+
+class SupabaseStorageService {
+  static bool get configured => supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
+
+  static Future<String> upload(File file, String path, String contentType) async {
+    if (!configured) {
+      throw StateError('Supabase Storage غير مهيأ. أضف SUPABASE_URL و SUPABASE_PUBLISHABLE_KEY في Codemagic.');
+    }
+    final storage = Supabase.instance.client.storage.from(supabaseBucket);
+    await storage.upload(
+      path,
+      file,
+      fileOptions: FileOptions(contentType: contentType, upsert: true),
+    );
+    return storage.getPublicUrl(path);
+  }
+}
+
 
 class AppOpenAdManager {
   static bool _shownThisLaunch = false;
@@ -81,6 +103,9 @@ class AppData {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  if (SupabaseStorageService.configured) {
+    await Supabase.initialize(url: supabaseUrl, publishableKey: supabasePublishableKey);
+  }
   await MobileAds.instance.initialize();
   AppData.isLoggedIn = FirebaseAuth.instance.currentUser != null;
   if (FirebaseAuth.instance.currentUser != null) {
@@ -1378,9 +1403,11 @@ class _UploadPostScreenState extends State<UploadPostScreen> {
           widget.mediaPath.toLowerCase().endsWith('.jpeg') ||
           widget.mediaPath.toLowerCase().endsWith('.png');
       final ext = isImage ? 'jpg' : 'mp4';
-      final ref = FirebaseStorage.instance.ref('videos/${user.uid}/$id.$ext');
-      await ref.putFile(mediaFile, SettableMetadata(contentType: isImage ? 'image/jpeg' : 'video/mp4')).timeout(const Duration(minutes: 5));
-      final url = await ref.getDownloadURL().timeout(const Duration(seconds: 30));
+      final url = await SupabaseStorageService.upload(
+        mediaFile,
+        'videos/${user.uid}/$id.$ext',
+        isImage ? 'image/jpeg' : 'video/mp4',
+      ).timeout(const Duration(minutes: 5));
       await FirebaseFirestore.instance.collection('videos').doc(id).set({
         'id': id,
         'ownerId': user.uid,
@@ -1662,12 +1689,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     try {
       var photo = _photoUrl;
       if (_picked != null) {
-        final ref = FirebaseStorage.instance.ref('profile_images/${u.uid}.jpg');
-        await ref.putFile(
+        photo = await SupabaseStorageService.upload(
           File(_picked!.path),
-          SettableMetadata(contentType: 'image/jpeg'),
+          'profile_images/${u.uid}.jpg',
+          'image/jpeg',
         ).timeout(const Duration(minutes: 2));
-        photo = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
       }
 
       final data = <String, dynamic>{
