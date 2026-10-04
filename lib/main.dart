@@ -11,6 +11,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_trimmer/video_trimmer.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
@@ -1043,11 +1044,27 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
         : await picker.pickVideo(source: ImageSource.gallery);
 
     if (!mounted || pickedFile == null) return;
+    if (_selectedMode != 'صورة') {
+      await _openVideoTrim(pickedFile.path);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => UploadPostScreen(mediaPath: pickedFile.path),
       ),
+    );
+  }
+
+  Future<void> _openVideoTrim(String path) async {
+    final trimmedPath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => VideoTrimScreen(inputPath: path)),
+    );
+    if (!mounted || trimmedPath == null || trimmedPath.isEmpty) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => UploadPostScreen(mediaPath: trimmedPath)),
     );
   }
 
@@ -1070,10 +1087,7 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
         );
         return;
       }
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => UploadPostScreen(mediaPath: path)),
-      );
+      await _openVideoTrim(path);
     } on MissingPluginException {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Snap Lenses غير مضافة في نسخة البناء الحالية. تأكد من رفع codemagic.yaml ثم أعد البناء.')));
     } on PlatformException catch (e) {
@@ -1203,7 +1217,7 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
                               final file = await _controller!.stopVideoRecording();
                               setState(() => _isRecording = false);
                               if (mounted) {
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => UploadPostScreen(mediaPath: file.path)));
+                                await _openVideoTrim(file.path);
                               }
                             } else {
                               await _controller!.startVideoRecording();
@@ -1213,7 +1227,7 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
                             final picker = ImagePicker();
                             final picked = await picker.pickVideo(source: ImageSource.camera);
                             if (picked != null && mounted) {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => UploadPostScreen(mediaPath: picked.path)));
+                              await _openVideoTrim(picked.path);
                             }
                           }
                         }
@@ -1247,6 +1261,132 @@ class _CameraStudioScreenState extends State<CameraStudioScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class VideoTrimScreen extends StatefulWidget {
+  final String inputPath;
+
+  const VideoTrimScreen({super.key, required this.inputPath});
+
+  @override
+  State<VideoTrimScreen> createState() => _VideoTrimScreenState();
+}
+
+class _VideoTrimScreenState extends State<VideoTrimScreen> {
+  final Trimmer _trimmer = Trimmer();
+  double _startValue = 0.0;
+  double _endValue = 180.0;
+  bool _loading = true;
+  bool _saving = false;
+  bool _playing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVideo();
+  }
+
+  Future<void> _loadVideo() async {
+    try {
+      await _trimmer.loadVideo(videoFile: File(widget.inputPath));
+      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تجهيز الفيديو للقص: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveTrimmedVideo() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final outputPath = await _trimmer.saveTrimmedVideo(
+        startValue: _startValue,
+        endValue: _endValue,
+      );
+      if (!mounted) return;
+      if (outputPath == null || outputPath.isEmpty) {
+        throw StateError('لم يتم إنشاء ملف الفيديو المقصوص');
+      }
+      Navigator.pop(context, outputPath);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل قص الفيديو: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('قص الفيديو'),
+        actions: [
+          TextButton(
+            onPressed: _loading || _saving ? null : _saveTrimmedVideo,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('متابعة', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+      backgroundColor: Colors.black,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : SafeArea(
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'حرّك الطرفين لاختيار اللقطة. الحد الأقصى 3 دقائق.',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  Expanded(child: VideoViewer(trimmer: _trimmer)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: TrimViewer(
+                      trimmer: _trimmer,
+                      viewerHeight: 60,
+                      viewerWidth: MediaQuery.of(context).size.width,
+                      maxVideoLength: const Duration(minutes: 3),
+                      onChangeStart: (value) => _startValue = value,
+                      onChangeEnd: (value) => _endValue = value,
+                      onChangePlaybackState: (value) {
+                        if (mounted) setState(() => _playing = value);
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    iconSize: 54,
+                    color: Colors.white,
+                    icon: Icon(_playing ? Icons.pause_circle : Icons.play_circle),
+                    onPressed: () async {
+                      final playing = await _trimmer.videoPlaybackControl(
+                        startValue: _startValue,
+                        endValue: _endValue,
+                      );
+                      if (mounted) setState(() => _playing = playing);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
     );
   }
 }
