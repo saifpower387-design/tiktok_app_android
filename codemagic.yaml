@@ -103,17 +103,25 @@ workflows:
 
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           text = manifest.read_text()
-          permissions = '''    <uses-permission android:name="android.permission.CAMERA" />
+          permissions = '''    <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.CAMERA" />
               <uses-permission android:name="android.permission.RECORD_AUDIO" />
           '''
           if 'android.permission.CAMERA' not in text:
               text = text.replace('<application', permissions + '    <application', 1)
-          admob_meta = '''        <meta-data
-              android:name="com.google.android.gms.ads.APPLICATION_ID"
-              android:value="ca-app-pub-5663628720448893~5879440187" />
+          admob_meta = '''
+              <meta-data
+                  android:name="com.google.android.gms.ads.APPLICATION_ID"
+                  android:value="ca-app-pub-5663628720448893~5879440187" />
           '''
           if 'com.google.android.gms.ads.APPLICATION_ID' not in text:
-              text = text.replace('<application', '<application\n' + admob_meta, 1)
+              import re
+              # لازم تتضاف "بعد" وسم <application ...> المفتوح، مش جواه (ده كان بيكسر ملف الـ XML)
+              text, n = re.subn(r'(<application\b[^>]*?>)', lambda m: m.group(1) + admob_meta, text, count=1, flags=re.S)
+              if n != 1:
+                  raise SystemExit('Could not find <application> tag in AndroidManifest.xml')
+          import xml.dom.minidom
+          xml.dom.minidom.parseString(text)  # يتأكد إن الملف XML سليم قبل الحفظ
           manifest.write_text(text)
 
           gradle = next(Path('android/app').glob('build.gradle*'), None)
