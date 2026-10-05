@@ -50,12 +50,21 @@ workflows:
           import re
           from pathlib import Path
 
-          files = list(Path.home().glob('.pub-cache/hosted/**/ffmpeg_kit_flutter-*/android/build.gradle'))
+          files = list(
+              Path.home().glob(
+                  '.pub-cache/hosted/**/ffmpeg_kit_flutter-*/android/build.gradle'
+              )
+          )
+
           if not files:
-              raise SystemExit('ffmpeg_kit_flutter Android build.gradle was not found after flutter pub get')
+              print(
+                  'ffmpeg_kit_flutter is not in this build dependency graph; '
+                  'skipping namespace patch'
+              )
 
           for path in files:
               text = path.read_text()
+
               if re.search(r'(?m)^\s*namespace\s+', text):
                   print(f'Namespace already exists: {path}')
                   continue
@@ -63,18 +72,35 @@ workflows:
               manifest = path.parent / 'src/main/AndroidManifest.xml'
               if not manifest.exists():
                   raise SystemExit(f'AndroidManifest.xml not found: {manifest}')
-              package_match = re.search(r'<manifest\b[^>]*\bpackage=["\']([^"\']+)["\']', manifest.read_text())
+
+              package_match = re.search(
+                  r'<manifest\b[^>]*\bpackage=["\']([^"\']+)["\']',
+                  manifest.read_text()
+              )
               if not package_match:
                   raise SystemExit(f'Could not read package from {manifest}')
 
-              android_block = re.search(r'(?m)^(\s*)android\s*\{\s*$', text)
+              android_block = re.search(
+                  r'(?m)^(\s*)android\s*\{\s*$',
+                  text
+              )
               if not android_block:
                   raise SystemExit(f'Could not find android {{ block in {path}')
+
               indent = android_block.group(1) + '    '
-              insertion = f"\n{indent}namespace '{package_match.group(1)}'"
-              text = text[:android_block.end()] + insertion + text[android_block.end():]
+              insertion = (
+                  f"\n{indent}namespace '{package_match.group(1)}'"
+              )
+              text = (
+                  text[:android_block.end()]
+                  + insertion
+                  + text[android_block.end():]
+              )
+
               path.write_text(text)
-              print(f'Added namespace {package_match.group(1)} to {path}')
+              print(
+                  f'Added namespace {package_match.group(1)} to {path}'
+              )
           PY
 
       - name: Fix Agora compileSdk
@@ -83,7 +109,11 @@ workflows:
           import re
           from pathlib import Path
 
-          candidates = list(Path.home().glob('.pub-cache/hosted/**/agora_rtc_engine-*/android/build.gradle*'))
+          candidates = list(
+              Path.home().glob(
+                  '.pub-cache/hosted/**/agora_rtc_engine-*/android/build.gradle*'
+              )
+          )
           if not candidates:
               raise SystemExit('Could not find Agora Android Gradle file')
 
@@ -108,8 +138,11 @@ workflows:
                   print(f'Updated Agora compileSdk: {path}')
               else:
                   print(f'No compileSdk change needed in: {path}')
+
           if not changed:
-              raise SystemExit('Agora compileSdk was not changed; inspect the package Gradle file')
+              raise SystemExit(
+                  'Agora compileSdk was not changed; inspect the package Gradle file'
+              )
           PY
 
       - name: Force iris_method_channel compileSdk 36
