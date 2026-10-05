@@ -3045,7 +3045,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     const TextSpan(text: '   |   الحصول على عملات ←',
                         style: TextStyle(color: Colors.grey)),
                   ]),
-                )),
+                ))),
                 const SizedBox(height: 30),
                 Container(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
