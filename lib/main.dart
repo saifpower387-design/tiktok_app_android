@@ -3344,20 +3344,42 @@ class _WalletScreenState extends State<WalletScreen> {
                           fontWeight: FontWeight.w800))),
                 ),
                 const SizedBox(height: 16),
-                Center(child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  decoration: BoxDecoration(color: const Color(0xfffff8e8),
-                      borderRadius: BorderRadius.circular(24)),
-                  child: RichText(text: TextSpan(style: const TextStyle(
-                      color: Colors.black, fontSize: 16), children: [
-                    const TextSpan(text: '🪙 العملات '),
-                    TextSpan(text: '$available', style: const TextStyle(
-                        fontWeight: FontWeight.bold)),
-                    const TextSpan(text: '   |   الحصول على عملات ←',
-                        style: TextStyle(color: Colors.grey)),
-                  ]),
-                )),
+               
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xfffff8e8),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 16,
+                        ),
+                        children: [
+                          const TextSpan(text: '🪙 العملات '),
+                          TextSpan(
+                            text: '$available',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const TextSpan(
+                            text: '   |   الحصول على عملات ←',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 18),
+
                 const Text('شحن العملات', textAlign: TextAlign.right, style: TextStyle(
                     color: Colors.black, fontSize: 20, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 10),
